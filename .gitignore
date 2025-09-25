@@ -1,0 +1,32 @@
+# Git Ignore File for upbit_auto_bot project
+
+# Environment variables
+config/.env
+
+# Python specific ignores
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+.tox/
+.venv/
+venv/
+env/
+ENV/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# IDEs and OS generated files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
