@@ -95,15 +95,39 @@ class UpbitService:
             print(f"Error placing MARKET SELL order for {symbol} with amount {amount}: {e}")
             return None
 
+    def create_market_buy_order(self, symbol: str, amount_krw: float):
+        """
+        특정 심볼의 코인을 시장가로 매수합니다.
+        amount_krw는 매수할 원화 금액입니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        
+        try:
+            # 시장가 매수는 보통 amount_krw를 지정하여 해당 금액만큼 매수합니다.
+            # ccxt의 create_market_buy_order는 amount (코인 수량)를 인자로 받으므로,
+            # 현재 가격을 조회하여 코인 수량을 계산해야 합니다.
+            current_price = self.get_current_price(symbol)
+            if current_price is None:
+                print(f"Error: Could not get current price for market buy of {symbol}.")
+                return None
+            
+            amount_coin = amount_krw / current_price
+            
+            order = self.exchange.create_market_buy_order(symbol, amount_coin)
+            print(f"Placed MARKET BUY order: {amount_krw:,.0f} KRW worth of {symbol.split('/')[0]} at market price. Order ID: {order['id']}")
+            return order
+        except Exception as e:
+            print(f"Error placing MARKET BUY order for {symbol} with amount_krkrw {amount_krw}: {e}")
+            return None
+
 if __name__ == '__main__':
     # .env 파일 생성 (테스트용)
     env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
     if not os.path.exists(env_path):
         with open(env_path, 'w') as f:
-            f.write("UPBIT_ACCESS_KEY=YOUR_ACCESS_KEY
-")
-            f.write("UPBIT_SECRET_KEY=YOUR_SECRET_KEY
-")
+            f.write("""UPBIT_ACCESS_KEY=YOUR_ACCESS_KEY
+UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
         print(f"Created a dummy .env file at {env_path}. Please replace YOUR_ACCESS_KEY and YOUR_SECRET_KEY with actual values.")
 
     # 사용 예시 (실제 API 키 필요)
