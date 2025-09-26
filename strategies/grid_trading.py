@@ -12,8 +12,10 @@ class GridTrader:
         self.order_amount_krw = order_amount_krw
         self.grids = self._generate_grids()
         self.active_orders = {} # {price: 'buy'/'sell'} to track active grid lines
+        self.stop_loss_price = lower_price * 0.97
         print(f"GridTrader initialized for {self.ticker} with {self.grid_count} grids from {self.lower_price} to {self.upper_price}")
         print(f"Generated Grids: {self.grids}")
+        print(f"Stop-loss price set at: {self.stop_loss_price:,.2f} KRW")
 
     def _generate_grids(self):
         """
@@ -76,6 +78,25 @@ class GridTrader:
                     continue
 
                 print(f"Current price for {self.ticker}: {current_price}")
+
+                # Stop-loss check
+                if current_price <= self.stop_loss_price:
+                    print(f"🚨 손절매 발동! {self.ticker} 전량 시장가 매도 및 거래 중지.")
+                    
+                    # 모든 미체결 매수 주문 취소
+                    self.upbit_service.cancel_all_orders(self.ticker)
+
+                    # 보유 코인 전량 시장가 매도
+                    base_currency = self.ticker.split('/')[0]
+                    balances = self.upbit_service.get_balance()
+                    amount_to_sell = balances['coins'].get(base_currency, 0)
+
+                    if amount_to_sell > 0:
+                        self.upbit_service.create_market_sell_order(self.ticker, amount_to_sell)
+                    else:
+                        print(f"Warning: No {base_currency} to sell for stop-loss.")
+                    
+                    return # 프로그램 종료
 
                 # 매수 그리드 확인 (가격이 하락하여 그리드 라인에 도달)
                 for grid_price in self.grids:

@@ -63,6 +63,38 @@ class UpbitService:
             print(f"Error fetching price for {ticker}: {e}")
             return None
 
+    def cancel_all_orders(self, symbol: str):
+        """
+        특정 심볼의 모든 미체결 주문을 취소합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        
+        try:
+            orders = self.exchange.fetch_open_orders(symbol)
+            for order in orders:
+                self.exchange.cancel_order(order['id'], symbol)
+                print(f"Cancelled order {order['id']} for {symbol}.")
+            return True
+        except Exception as e:
+            print(f"Error cancelling all orders for {symbol}: {e}")
+            return False
+
+    def create_market_sell_order(self, symbol: str, amount: float):
+        """
+        특정 심볼의 코인을 시장가로 전량 매도합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        
+        try:
+            order = self.exchange.create_market_sell_order(symbol, amount)
+            print(f"Placed MARKET SELL order: {amount:.4f} {symbol.split('/')[0]} at market price. Order ID: {order['id']}")
+            return order
+        except Exception as e:
+            print(f"Error placing MARKET SELL order for {symbol} with amount {amount}: {e}")
+            return None
+
 if __name__ == '__main__':
     # .env 파일 생성 (테스트용)
     env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
