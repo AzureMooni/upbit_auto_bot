@@ -2,4 +2,4 @@ requests
 python-dotenv
 ccxt
 pandas
-tulipy
+pandas-ta

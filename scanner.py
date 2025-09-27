@@ -1,7 +1,7 @@
 import ccxt
 import pandas as pd
 import time
-import tulipy as ti
+import pandas_ta as ta
 
 def find_hot_coin(historical_data: dict, ema_short_period: int = 20, ema_long_period: int = 60):
     """
@@ -28,27 +28,21 @@ def find_hot_coin(historical_data: dict, ema_short_period: int = 20, ema_long_pe
         
         if volume_24h >= 5_000_000_000 and abs(volatility_24h) >= 3:
             # Resample 1-hour data to 4-hour data for EMA calculation
-            df_4h = df_1h['close'].resample('4H').ohlc().dropna()
-            if len(df_4h) < 60: # Need enough 4-hour data for EMA60
+            df_4h = df_1h['close'].resample('4h').ohlc().dropna()
+            ema_short_values = ta.ema(close=df_4h['close'], length=ema_short_period)
+            ema_long_values = ta.ema(close=df_4h['close'], length=ema_long_period)
+            df_4h[f'EMA_{ema_short_period}'] = ema_short_values
+            df_4h[f'EMA_{ema_long_period}'] = ema_long_values
+            
+            latest_ema_short_4h = df_4h[f'EMA_{ema_short_period}'].iloc[-1]
+            latest_ema_long_4h = df_4h[f'EMA_{ema_long_period}'].iloc[-1]
+
+            if pd.isna(latest_ema_short_4h) or pd.isna(latest_ema_long_4h):
                 continue
 
-            df_4h[f'EMA{ema_short_period}'] = df_4h['close'].ewm(span=ema_short_period, adjust=False).mean()
-            df_4h[f'EMA{ema_long_period}'] = df_4h['close'].ewm(span=ema_long_period, adjust=False).mean()
-            
-            latest_ema_short_4h = df_4h[f'EMA{ema_short_period}'].iloc[-1]
-            latest_ema_long_4h = df_4h[f'EMA{ema_long_period}'].iloc[-1]
-
             # RSI calculation remains on 1-hour data
-            delta = df_1h['close'].diff()
-            gain = delta.where(delta > 0, 0)
-            loss = -delta.where(delta < 0, 0)
-            
-            avg_gain = gain.ewm(span=14, adjust=False).mean()
-            avg_loss = loss.ewm(span=14, adjust=False).mean()
-            
-            rs = avg_gain / avg_loss
-            df_1h['RSI'] = 100 - (100 / (1 + rs))
-            latest_rsi_1h = df_1h['RSI'].iloc[-1]
+            df_1h.ta.rsi(length=14, append=True, close='close')
+            latest_rsi_1h = df_1h['RSI_14'].iloc[-1]
 
             if latest_ema_short_4h > latest_ema_long_4h and latest_rsi_1h < 70:
                 hot_coins.append({
@@ -88,18 +82,24 @@ def find_hot_coin_live(upbit_exchange: ccxt.Exchange, ema_short_period: int = 30
 
             if volume_24h >= 5_000_000_000 and abs(volatility_24h) >= 3:
                 # Fetch 4-hour OHLCV data for EMA calculation
-                ohlcv_4h = upbit_exchange.fetch_ohlcv(symbol, '4h', limit=60) # Need at least 60 for EMA60
-                if not ohlcv_4h or len(ohlcv_4h) < 60:
+                ohlcv_4h = upbit_exchange.fetch_ohlcv(symbol, '4h', limit=ema_long_period + 10) # Adjusted limit for safety
+                if not ohlcv_4h or len(ohlcv_4h) < ema_long_period:
                     continue
                 df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 df_4h['timestamp'] = pd.to_datetime(df_4h['timestamp'], unit='ms')
                 df_4h.set_index('timestamp', inplace=True)
 
-                df_4h[f'EMA{ema_short_period}'] = df_4h['close'].ewm(span=ema_short_period, adjust=False).mean()
-                df_4h[f'EMA{ema_long_period}'] = df_4h['close'].ewm(span=ema_long_period, adjust=False).mean()
+                ema_short_values = ta.ema(close=df_4h['close'], length=ema_short_period)
+                ema_long_values = ta.ema(close=df_4h['close'], length=ema_long_period)
+
+                df_4h[f'EMA_{ema_short_period}'] = ema_short_values
+                df_4h[f'EMA_{ema_long_period}'] = ema_long_values
                 
-                latest_ema_short_4h = df_4h[f'EMA{ema_short_period}'].iloc[-1]
-                latest_ema_long_4h = df_4h[f'EMA{ema_long_period}'].iloc[-1]
+                latest_ema_short_4h = df_4h[f'EMA_{ema_short_period}'].iloc[-1]
+                latest_ema_long_4h = df_4h[f'EMA_{ema_long_period}'].iloc[-1]
+
+                if pd.isna(latest_ema_short_4h) or pd.isna(latest_ema_long_4h):
+                    continue
 
                 # Fetch 1-hour OHLCV data for RSI calculation
                 ohlcv_1h = upbit_exchange.fetch_ohlcv(symbol, '1h', limit=100) # Need enough for RSI14
@@ -109,16 +109,8 @@ def find_hot_coin_live(upbit_exchange: ccxt.Exchange, ema_short_period: int = 30
                 df_1h['timestamp'] = pd.to_datetime(df_1h['timestamp'], unit='ms')
                 df_1h.set_index('timestamp', inplace=True)
 
-                delta = df_1h['close'].diff()
-                gain = delta.where(delta > 0, 0)
-                loss = -delta.where(delta < 0, 0)
-                
-                avg_gain = gain.ewm(span=14, adjust=False).mean()
-                avg_loss = loss.ewm(span=14, adjust=False).mean()
-                
-                rs = avg_gain / avg_loss
-                df_1h['RSI'] = 100 - (100 / (1 + rs))
-                latest_rsi_1h = df_1h['RSI'].iloc[-1]
+                df_1h.ta.rsi(length=14, append=True, close='close')
+                latest_rsi_1h = df_1h['RSI_14'].iloc[-1]
 
                 if latest_ema_short_4h > latest_ema_long_4h and latest_rsi_1h < 70:
                     hot_coins.append({
@@ -219,11 +211,8 @@ def classify_market(ticker: str, historical_data: dict):
         return "unknown"
 
     try:
-        high = df['high'].values
-        low = df['low'].values
-        close = df['close'].values
-
-        adx_values = ti.adx(high, low, close, 14)
+        df.ta.adx(length=14, append=True, high='high', low='low', close='close')
+        adx_values = df['ADX_14']
 
         if len(adx_values) == 0:
             return "unknown"
@@ -236,7 +225,6 @@ def classify_market(ticker: str, historical_data: dict):
             return "ranging"
         else:
             return "choppy"
-
     except Exception as e:
         print(f"Error in classify_market for {ticker}: {e}")
         return "unknown"
@@ -255,11 +243,8 @@ def classify_market_live(ticker: str, upbit_exchange: ccxt.Exchange):
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
 
-        high = df['high'].values
-        low = df['low'].values
-        close = df['close'].values
-
-        adx_values = ti.adx(high, low, close, 14)
+        df.ta.adx(length=14, append=True, high='high', low='low', close='close')
+        adx_values = df['ADX_14']
 
         if len(adx_values) == 0:
             return "unknown"

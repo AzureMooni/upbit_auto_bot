@@ -1,7 +1,7 @@
 import ccxt
 import time
 import pandas as pd
-import tulipy as ti
+import pandas_ta as ta
 from core.exchange import UpbitService
 from scanner import find_hot_coin # find_hot_coin은 추세 조건을 포함하므로, 여기서는 진입 신호로 활용
 
@@ -34,11 +34,8 @@ class TrendFollower:
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
 
-            high = df['high'].values
-            low = df['low'].values
-            close = df['close'].values
-
-            atr_values = ti.atr(high, low, close, self.atr_period)
+            df.ta.atr(length=self.atr_period, append=True, high='high', low='low', close='close')
+            atr_values = df[f'ATR_{self.atr_period}']
             
             if len(atr_values) == 0:
                 return None
