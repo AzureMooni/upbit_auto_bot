@@ -49,6 +49,26 @@ class UpbitService:
             'coins': coin_balances
         }
 
+    def get_total_capital(self):
+        """
+        현재 보유한 원화(KRW)와 보유 중인 모든 코인의 현재 가치를 평가하여 '총자산'을 원화로 계산해서 반환합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        
+        balances = self.get_balance()
+        total_krw = balances['KRW']
+        
+        for currency, amount in balances['coins'].items():
+            ticker = f"{currency}/KRW"
+            current_price = self.get_current_price(ticker)
+            if current_price:
+                total_krw += amount * current_price
+            else:
+                print(f"Warning: Could not get current price for {ticker}. Excluding from total capital calculation.")
+        
+        return total_krw
+
     def get_current_price(self, ticker: str):
         """
         특정 티커(예: 'BTC/KRW')의 현재 가격을 조회하여 숫자(float)로 반환합니다.

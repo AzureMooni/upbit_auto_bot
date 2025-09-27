@@ -3,17 +3,18 @@ import math
 from core.exchange import UpbitService
 
 class GridTrader:
-    def __init__(self, upbit_service: UpbitService, ticker: str, lower_price: float, upper_price: float, grid_count: int, order_amount_krw: float):
+    def __init__(self, upbit_service: UpbitService, ticker: str, lower_price: float, upper_price: float, grid_count: int, allocated_capital: float):
         self.upbit_service = upbit_service
         self.ticker = ticker
         self.lower_price = lower_price
         self.upper_price = upper_price
         self.grid_count = grid_count
-        self.order_amount_krw = order_amount_krw
+        self.allocated_capital = allocated_capital
+        self.order_amount_per_grid = self.allocated_capital / self.grid_count # Calculate order amount per grid
         self.grids = self._generate_grids()
         self.active_orders = {} # {price: 'buy'/'sell'} to track active grid lines
         self.stop_loss_price = lower_price * 0.97
-        print(f"GridTrader initialized for {self.ticker} with {self.grid_count} grids from {self.lower_price} to {self.upper_price}")
+        print(f"GridTrader initialized for {self.ticker} with {self.grid_count} grids from {self.lower_price} to {self.upper_price}. Allocated capital: {self.allocated_capital:,.0f} KRW, Order per grid: {self.order_amount_per_grid:,.0f} KRW")
         print(f"Generated Grids: {self.grids}")
         print(f"Stop-loss price set at: {self.stop_loss_price:,.2f} KRW")
 
@@ -41,7 +42,7 @@ class GridTrader:
 
         if order_type == 'buy':
             # 매수할 코인 수량 계산 (주문 금액 / 현재 가격)
-            amount = self.order_amount_krw / price
+            amount = self.order_amount_per_grid / price
             try:
                 order = self.upbit_service.exchange.create_limit_buy_order(symbol, amount, price)
                 print(f"Placed BUY order: {amount:.4f} {base_currency} at {price} {quote_currency}. Order ID: {order['id']}")
@@ -51,9 +52,9 @@ class GridTrader:
                 return None
         elif order_type == 'sell':
             # 매도할 코인 수량 계산 (주문 금액 / 현재 가격)
-            # 실제 보유 수량을 확인해야 하지만, 여기서는 단순화를 위해 order_amount_krw를 사용
+            # 실제 보유 수량을 확인해야 하지만, 여기서는 단순화를 위해 order_amount_per_grid를 사용
             # 실제 구현에서는 get_balance()를 통해 보유 코인 수량을 확인해야 합니다.
-            amount = self.order_amount_krw / price # 이 부분은 실제 매도 가능 수량으로 대체되어야 함
+            amount = self.order_amount_per_grid / price # 이 부분은 실제 매도 가능 수량으로 대체되어야 함
             try:
                 order = self.upbit_service.exchange.create_limit_sell_order(symbol, amount, price)
                 print(f"Placed SELL order: {amount:.4f} {base_currency} at {price} {quote_currency}. Order ID: {order['id']}")

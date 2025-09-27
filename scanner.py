@@ -2,137 +2,147 @@ import ccxt
 import pandas as pd
 import time
 import pandas_ta as ta
+import os
+from model_trainer import ModelTrainer
 
-def find_hot_coin(historical_data: dict, ema_short_period: int = 20, ema_long_period: int = 60):
-    """
-    업비트의 모든 KRW 마켓 정보를 가져와서 거래대금 및 변동성 조건을 만족하는
-    가장 거래대금이 높은 코인 1개의 티커를 반환합니다.
-    historical_data 딕셔너리에서 해당 티커의 과거 데이터를 사용하여 계산합니다.
-    """
-    hot_coins = []
+# Initialize ModelTrainer globally
+model_trainer = ModelTrainer(model_path=os.path.join(os.path.dirname(__file__), '..', 'price_predictor.pkl'),
+                             scaler_path=os.path.join(os.path.dirname(__file__), '..', 'price_scaler.pkl'))
+model_trainer.load_model() # Load model if it exists
 
-    # Backtesting mode: use provided historical data
+# Helper function for Pivot Points and Breakout Values (for backtesting)
+def _calculate_breakout_levels(df_daily):
+    if len(df_daily) < 2:
+        return None, None, None, None, None, None # PP, R1, S1, R2, S2, Breakout_Value
+
+    # Previous day's data
+    prev_day = df_daily.iloc[-2]
+    prev_high = prev_day['high']
+    prev_low = prev_day['low']
+    prev_close = prev_day['close']
+
+    # Pivot Point (PP)
+    pp = (prev_high + prev_low + prev_close) / 3
+
+    # Resistance and Support levels (standard pivot point calculation)
+    r1 = (2 * pp) - prev_low
+    s1 = (2 * pp) - prev_high
+    r2 = pp + (prev_high - prev_low)
+    s2 = pp - (prev_high - prev_low)
+
+    # Larry Williams' Breakout Value
+    k = 0.5 # User defined k-factor
+    breakout_value = (prev_high - prev_low) * k
+
+    return pp, r1, s1, r2, s2, breakout_value
+
+# Helper function for Pivot Points and Breakout Values (for live trading)
+def _calculate_breakout_levels_live(ohlcv_daily):
+    if not ohlcv_daily or len(ohlcv_daily) < 2:
+        return None, None, None, None, None, None # PP, R1, S1, R2, S2, Breakout_Value
+
+    # Previous day's data
+    prev_day = ohlcv_daily[-2]
+    prev_high = prev_day[2]
+    prev_low = prev_day[3]
+    prev_close = prev_day[4]
+
+    # Pivot Point (PP)
+    pp = (prev_high + prev_low + prev_close) / 3
+
+    # Resistance and Support levels (standard pivot point calculation)
+    r1 = (2 * pp) - prev_low
+    s1 = (2 * pp) - prev_high
+    r2 = pp + (prev_high - prev_low)
+    s2 = pp - (prev_high - prev_low)
+
+    # Larry Williams' Breakout Value
+    k = 0.5 # User defined k-factor
+    breakout_value = (prev_high - prev_low) * k
+
+    return pp, r1, s1, r2, s2, breakout_value
+
+def find_hot_coin(historical_data: dict):
+    """
+    과거 데이터를 기반으로 머신러닝 모델을 사용하여 미래 상승 확률이 가장 높은 코인을 찾습니다.
+    """
+    best_coin = None
+    highest_buy_prob = -1
+
+    if not model_trainer.model or not model_trainer.scaler:
+        print("ML model not loaded. Please train and save the model first.")
+        return []
+
     for symbol, df_1h in historical_data.items():
         if not symbol.endswith('/KRW'):
             continue
 
-        if len(df_1h) < 240: # Need enough 1-hour data for 60 4-hour EMA and 14-period RSI
+        # Ensure enough data for feature generation (e.g., 100 periods for some indicators)
+        if len(df_1h) < 150: # A safe margin for various indicators
             continue
         
-        df_24h = df_1h.iloc[-24:]
-
-        volume_24h = (df_24h['volume'] * df_24h['close']).sum()
-        if df_24h['open'].iloc[0] == 0:
-            continue
-        volatility_24h = ((df_24h['close'].iloc[-1] - df_24h['open'].iloc[0]) / df_24h['open'].iloc[0]) * 100
-        
-        if volume_24h >= 5_000_000_000 and abs(volatility_24h) >= 3:
-            # Resample 1-hour data to 4-hour data for EMA calculation
-            df_4h = df_1h['close'].resample('4h').ohlc().dropna()
-            ema_short_values = ta.ema(close=df_4h['close'], length=ema_short_period)
-            ema_long_values = ta.ema(close=df_4h['close'], length=ema_long_period)
-            df_4h[f'EMA_{ema_short_period}'] = ema_short_values
-            df_4h[f'EMA_{ema_long_period}'] = ema_long_values
+        try:
+            # Predict buy probability for the latest data point
+            buy_prob = model_trainer.predict(df_1h.copy())
             
-            latest_ema_short_4h = df_4h[f'EMA_{ema_short_period}'].iloc[-1]
-            latest_ema_long_4h = df_4h[f'EMA_{ema_long_period}'].iloc[-1]
+            if buy_prob is not None and buy_prob > highest_buy_prob:
+                highest_buy_prob = buy_prob
+                best_coin = symbol
+        except Exception as e:
+            print(f"Error predicting for {symbol} in backtesting: {e}")
+            continue
 
-            if pd.isna(latest_ema_short_4h) or pd.isna(latest_ema_long_4h):
-                continue
-
-            # RSI calculation remains on 1-hour data
-            df_1h.ta.rsi(length=14, append=True, close='close')
-            latest_rsi_1h = df_1h['RSI_14'].iloc[-1]
-
-            if latest_ema_short_4h > latest_ema_long_4h and latest_rsi_1h < 70:
-                hot_coins.append({
-                    'symbol': symbol,
-                    'volume_24h': volume_24h,
-                    'volatility_24h': volatility_24h,
-                    f'ema{ema_short_period}': latest_ema_short_4h,
-                    f'ema{ema_long_period}': latest_ema_long_4h,
-                    'rsi': latest_rsi_1h
-                })
-    hot_coins.sort(key=lambda x: x['volume_24h'], reverse=True)
-    
-    if hot_coins:
-        print(f"Found hot coin: {hot_coins[0]['symbol']} (Volume: {hot_coins[0]['volume_24h']:.0f} KRW, Volatility: {hot_coins[0]['volatility_24h']:.2f}%)")
-        return hot_coins[0]['symbol']
+    if best_coin and highest_buy_prob > 0.5: # Only consider if buy probability is reasonably high
+        print(f"ML model selected hot coin (Backtest): {best_coin} with buy probability: {highest_buy_prob:.4f}")
+        return [best_coin]
     else:
-        print("No hot coins found matching the criteria.")
-        return None
+        print("ML model found no hot coins with high buy probability (Backtest).")
+        return []
 
-def find_hot_coin_live(upbit_exchange: ccxt.Exchange, ema_short_period: int = 30, ema_long_period: int = 100):
+def find_hot_coin_live(upbit_exchange: ccxt.Exchange):
     """
-    ccxt 거래소 객체를 사용하여 실시간으로 핫 코인을 찾습니다.
+    실시간으로 머신러닝 모델을 사용하여 미래 상승 확률이 가장 높은 코인을 찾습니다.
     """
-    hot_coins = []
+    best_coin = None
+    highest_buy_prob = -1
+
+    if not model_trainer.model or not model_trainer.scaler:
+        print("ML model not loaded. Please train and save the model first.")
+        return []
+
     try:
-        tickers = upbit_exchange.fetch_tickers()
-        krw_markets = {symbol: data for symbol, data in tickers.items() if symbol.endswith('/KRW')}
+        markets = upbit_exchange.load_markets()
+        krw_tickers = [m for m in markets if m.endswith('/KRW')]
 
-        for symbol, data in krw_markets.items():
-            # 24시간 거래대금 (volume * last price)
-            volume_24h = data['quoteVolume'] # Upbit's quoteVolume is KRW volume
-            
-            # 24시간 변동성
-            if data['open'] is None or data['open'] == 0:
+        for symbol in krw_tickers:
+            # Fetch 1-hour OHLCV data for feature generation
+            ohlcv_1h = upbit_exchange.fetch_ohlcv(symbol, '1h', limit=150) # Need enough data for indicators
+            if not ohlcv_1h or len(ohlcv_1h) < 150:
                 continue
-            volatility_24h = ((data['last'] - data['open']) / data['open']) * 100
+            
+            df_1h = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df_1h['timestamp'] = pd.to_datetime(df_1h['timestamp'], unit='ms')
+            df_1h.set_index('timestamp', inplace=True)
 
-            if volume_24h >= 5_000_000_000 and abs(volatility_24h) >= 3:
-                # Fetch 4-hour OHLCV data for EMA calculation
-                ohlcv_4h = upbit_exchange.fetch_ohlcv(symbol, '4h', limit=ema_long_period + 10) # Adjusted limit for safety
-                if not ohlcv_4h or len(ohlcv_4h) < ema_long_period:
-                    continue
-                df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                df_4h['timestamp'] = pd.to_datetime(df_4h['timestamp'], unit='ms')
-                df_4h.set_index('timestamp', inplace=True)
+            try:
+                buy_prob = model_trainer.predict(df_1h.copy())
+                if buy_prob is not None and buy_prob > highest_buy_prob:
+                    highest_buy_prob = buy_prob
+                    best_coin = symbol
+            except Exception as e:
+                print(f"Error predicting for {symbol} in live mode: {e}")
+                continue
 
-                ema_short_values = ta.ema(close=df_4h['close'], length=ema_short_period)
-                ema_long_values = ta.ema(close=df_4h['close'], length=ema_long_period)
-
-                df_4h[f'EMA_{ema_short_period}'] = ema_short_values
-                df_4h[f'EMA_{ema_long_period}'] = ema_long_values
-                
-                latest_ema_short_4h = df_4h[f'EMA_{ema_short_period}'].iloc[-1]
-                latest_ema_long_4h = df_4h[f'EMA_{ema_long_period}'].iloc[-1]
-
-                if pd.isna(latest_ema_short_4h) or pd.isna(latest_ema_long_4h):
-                    continue
-
-                # Fetch 1-hour OHLCV data for RSI calculation
-                ohlcv_1h = upbit_exchange.fetch_ohlcv(symbol, '1h', limit=100) # Need enough for RSI14
-                if not ohlcv_1h or len(ohlcv_1h) < 14: # RSI needs at least 14 periods
-                    continue
-                df_1h = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                df_1h['timestamp'] = pd.to_datetime(df_1h['timestamp'], unit='ms')
-                df_1h.set_index('timestamp', inplace=True)
-
-                df_1h.ta.rsi(length=14, append=True, close='close')
-                latest_rsi_1h = df_1h['RSI_14'].iloc[-1]
-
-                if latest_ema_short_4h > latest_ema_long_4h and latest_rsi_1h < 70:
-                    hot_coins.append({
-                        'symbol': symbol,
-                        'volume_24h': volume_24h,
-                        'volatility_24h': volatility_24h,
-                        f'ema{ema_short_period}': latest_ema_short_4h,
-                        f'ema{ema_long_period}': latest_ema_long_4h,
-                        'rsi': latest_rsi_1h
-                    })
     except Exception as e:
         print(f"Error in find_hot_coin_live: {e}")
-        return None
+        return []
 
-    hot_coins.sort(key=lambda x: x['volume_24h'], reverse=True)
-    
-    if hot_coins:
-        print(f"Found hot coin (Live): {hot_coins[0]['symbol']} (Volume: {hot_coins[0]['volume_24h']:.0f} KRW, Volatility: {hot_coins[0]['volatility_24h']:.2f}%)")
-        return hot_coins[0]['symbol']
+    if best_coin and highest_buy_prob > 0.5: # Only consider if buy probability is reasonably high
+        print(f"ML model selected hot coin (Live): {best_coin} with buy probability: {highest_buy_prob:.4f}")
+        return [best_coin]
     else:
-        print("No hot coins found matching the criteria (Live).")
-        return None
+        print("ML model found no hot coins with high buy probability (Live).")
+        return []
 
 def get_dynamic_grid_prices(ticker: str, historical_data: dict):
     """
@@ -198,26 +208,39 @@ def get_dynamic_grid_prices_live(ticker: str, upbit_exchange: ccxt.Exchange):
 def classify_market(ticker: str, historical_data: dict):
     """
     시장의 '성격'을 진단하는 함수.
-    1시간 봉 데이터 기준으로 14기간 ADX(Average Directional Index)를 계산하여
+    변동성 돌파 임박 상태를 최우선으로 진단하고, 그 다음 ADX를 기반으로
     'trending' (추세장), 'ranging' (횡보장), 'choppy' (혼조세)를 반환합니다.
     historical_data 딕셔너리에서 해당 티커의 과거 데이터를 사용하여 계산합니다.
     """
-    df = None
+    df_1h = None
     if ticker in historical_data:
-        df = historical_data[ticker]
+        df_1h = historical_data[ticker]
 
-    if df is None or df.empty or len(df) < 100: # ADX 계산을 위해 최소 14개 데이터 필요, 100개로 가정
-        print(f"Not enough OHLCV data for {ticker} to calculate ADX. (Need at least 100, got {len(df) if df is not None else 0})")
+    if df_1h is None or df_1h.empty or len(df_1h) < 100: # ADX 계산을 위해 최소 14개 데이터 필요, 100개로 가정
+        print(f"Not enough OHLCV data for {ticker} to classify market. (Need at least 100, got {len(df_1h) if df_1h is not None else 0})")
         return "unknown"
 
     try:
-        df.ta.adx(length=14, append=True, high='high', low='low', close='close')
-        adx_values = df['ADX_14']
+        # 1. 변동성 돌파 임박 상태 진단 (최우선)
+        # 일봉 데이터 가져오기 (1시간 봉에서 일봉으로 리샘플링)
+        df_daily = df_1h['close'].resample('1D').ohlc().dropna()
+        if len(df_daily) >= 2:
+            pp, r1, s1, breakout_value = _calculate_breakout_levels(df_daily)
+            if pp is not None:
+                current_price = df_1h['close'].iloc[-1]
+                if current_price > (pp + breakout_value):
+                    return "breakout_up"
+                elif current_price < (pp - breakout_value):
+                    return "breakout_down"
+
+        # 2. ADX를 이용한 추세/횡보 진단
+        df_1h.ta.adx(length=14, append=True, high='high', low='low', close='close')
+        adx_values = df_1h['ADX_14']
 
         if len(adx_values) == 0:
             return "unknown"
 
-        latest_adx = adx_values[-1]
+        latest_adx = adx_values.iloc[-1] # Use iloc for Series
 
         if latest_adx >= 25:
             return "trending"
@@ -232,8 +255,23 @@ def classify_market(ticker: str, historical_data: dict):
 def classify_market_live(ticker: str, upbit_exchange: ccxt.Exchange):
     """
     실시간으로 시장의 '성격'을 진단하는 함수.
+    변동성 돌파 임박 상태를 최우선으로 진단하고, 그 다음 ADX를 기반으로
+    'trending' (추세장), 'ranging' (횡보장), 'choppy' (혼조세)를 반환합니다.
     """
     try:
+        # 1. 변동성 돌파 임박 상태 진단 (최우선)
+        # 일봉 데이터 가져오기
+        ohlcv_daily = upbit_exchange.fetch_ohlcv(ticker, '1d', limit=2) # 전일 고가/저가/종가 필요
+        if ohlcv_daily and len(ohlcv_daily) >= 2:
+            pp, r1, s1, breakout_value = _calculate_breakout_levels_live(ohlcv_daily)
+            if pp is not None:
+                current_price = upbit_exchange.fetch_ticker(ticker)['last']
+                if current_price > (pp + breakout_value):
+                    return "breakout_up"
+                elif current_price < (pp - breakout_value):
+                    return "breakout_down"
+
+        # 2. ADX를 이용한 추세/횡보 진단
         ohlcv_1h = upbit_exchange.fetch_ohlcv(ticker, '1h', limit=100)
         if not ohlcv_1h or len(ohlcv_1h) < 100:
             print(f"Not enough live OHLCV data for {ticker} to calculate ADX. (Need at least 100, got {len(ohlcv_1h) if ohlcv_1h else 0})")
@@ -249,7 +287,7 @@ def classify_market_live(ticker: str, upbit_exchange: ccxt.Exchange):
         if len(adx_values) == 0:
             return "unknown"
 
-        latest_adx = adx_values[-1]
+        latest_adx = adx_values.iloc[-1]
 
         if latest_adx >= 25:
             return "trending"
@@ -308,18 +346,19 @@ if __name__ == '__main__':
     live_exchange = ccxt.upbit()
 
     # 핫 코인 찾기 예시 (Live)
-    print("\nFinding hot coin (Live)...")
-    hot_coin_live = find_hot_coin_live(live_exchange)
-    if hot_coin_live:
-        print(f"The hottest coin (Live) is: {hot_coin_live}")
+    print("\nFinding hot coins (Live)...")
+    hot_coins_live = find_hot_coin_live(live_exchange)
+    if hot_coins_live:
+        print(f"Found {len(hot_coins_live)} hot coins (Live).")
+        first_hot_coin_live = hot_coins_live[0]
         
         # 핫 코인의 동적 그리드 가격 가져오기 예시 (Live)
-        print(f"\nGetting dynamic grid prices for {hot_coin_live} (Live)...")
-        lower_live, upper_live = get_dynamic_grid_prices_live(hot_coin_live, live_exchange)
+        print(f"\nGetting dynamic grid prices for {first_hot_coin_live} (Live)...")
+        lower_live, upper_live = get_dynamic_grid_prices_live(first_hot_coin_live, live_exchange)
         if lower_live and upper_live:
-            print(f"Dynamic Grid Range for {hot_coin_live} (Live): Lower={lower_live:.2f}, Upper={upper_live:.2f}")
+            print(f"Dynamic Grid Range for {first_hot_coin_live} (Live): Lower={lower_live:.2f}, Upper={upper_live:.2f}")
     else:
-        print("Could not find a hot coin (Live) to get dynamic grid prices for.")
+        print("Could not find any hot coins (Live) to get dynamic grid prices for.")
 
     # 시장 분류 예시 (Live)
     print("\nClassifying market for BTC/KRW (Live)...")
@@ -329,18 +368,19 @@ if __name__ == '__main__':
     print("\n--- Backtesting mode testing with historical_data ---")
 
     # 핫 코인 찾기 예시 (Backtest)
-    print("\nFinding hot coin (Backtest)...")
-    hot_coin_backtest = find_hot_coin(historical_data=dummy_historical_data)
-    if hot_coin_backtest:
-        print(f"""The hottest coin (Backtest) is: {hot_coin_backtest}\n""")
+    print("\nFinding hot coins (Backtest)...")
+    hot_coins_backtest = find_hot_coin(historical_data=dummy_historical_data)
+    if hot_coins_backtest:
+        print(f"Found {len(hot_coins_backtest)} hot coins (Backtest).")
+        first_hot_coin_backtest = hot_coins_backtest[0]
         
         # 핫 코인의 동적 그리드 가격 가져오기 예시 (Backtest)
-        print(f"\nGetting dynamic grid prices for {hot_coin_backtest} (Backtest)...")
-        lower_backtest, upper_backtest = get_dynamic_grid_prices(hot_coin_backtest, historical_data=dummy_historical_data)
+        print(f"\nGetting dynamic grid prices for {first_hot_coin_backtest} (Backtest)...")
+        lower_backtest, upper_backtest = get_dynamic_grid_prices(first_hot_coin_backtest, historical_data=dummy_historical_data)
         if lower_backtest and upper_backtest:
-            print(f"Dynamic Grid Range for {hot_coin_backtest} (Backtest): Lower={lower_backtest:.2f}, Upper={upper_backtest:.2f}")
+            print(f"Dynamic Grid Range for {first_hot_coin_backtest} (Backtest): Lower={lower_backtest:.2f}, Upper={upper_backtest:.2f}")
     else:
-        print("Could not find a hot coin (Backtest) to get dynamic grid prices for.")
+        print("Could not find any hot coins (Backtest) to get dynamic grid prices for.")
 
     # 시장 분류 예시 (Backtest)
     print("\nClassifying market for BTC/KRW (Backtest)...")

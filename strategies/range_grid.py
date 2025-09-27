@@ -4,8 +4,8 @@ from scanner import classify_market
 from core.exchange import UpbitService
 
 class RangeGridTrader(GridTrader):
-    def __init__(self, upbit_service: UpbitService, ticker: str, lower_price: float, upper_price: float, grid_count: int, order_amount_krw: float):
-        super().__init__(upbit_service, ticker, lower_price, upper_price, grid_count, order_amount_krw)
+    def __init__(self, upbit_service: UpbitService, ticker: str, lower_price: float, upper_price: float, grid_count: int, allocated_capital: float):
+        super().__init__(upbit_service, ticker, lower_price, upper_price, grid_count, allocated_capital)
         self.market_type = ""
         print(f"RangeGridTrader initialized for {self.ticker}. Will only activate in 'ranging' market.")
 

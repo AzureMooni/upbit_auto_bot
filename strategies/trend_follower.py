@@ -6,10 +6,10 @@ from core.exchange import UpbitService
 from scanner import find_hot_coin # find_hot_coin은 추세 조건을 포함하므로, 여기서는 진입 신호로 활용
 
 class TrendFollower:
-    def __init__(self, upbit_service: UpbitService, ticker: str, order_amount_krw: float = 100000, atr_multiplier: float = 3.0):
+    def __init__(self, upbit_service: UpbitService, ticker: str, allocated_capital: float, atr_multiplier: float = 3.0):
         self.upbit_service = upbit_service
         self.ticker = ticker
-        self.order_amount_krw = order_amount_krw
+        self.allocated_capital = allocated_capital
         self.position_held = False
         self.entry_price = 0.0
         self.high_water_mark = 0.0
@@ -18,7 +18,7 @@ class TrendFollower:
         self.atr_period = 14 # ATR 기간 설정
         self.atr_multiplier = atr_multiplier
 
-        print(f"TrendFollower initialized for {self.ticker} with dynamic trailing stop-loss (ATR period: {self.atr_period}).")
+        print(f"TrendFollower initialized for {self.ticker} with dynamic trailing stop-loss (ATR period: {self.atr_period}). Allocated capital: {self.allocated_capital:,.0f} KRW.")
 
     def _calculate_atr(self, ticker: str, exchange: ccxt.Exchange):
         """
@@ -64,7 +64,7 @@ class TrendFollower:
                 if not self.position_held:
                     print(f"No position held. Attempting to buy {self.ticker} at market price.")
                     
-                    order = self.upbit_service.create_market_buy_order(self.ticker, self.order_amount_krw)
+                    order = self.upbit_service.create_market_buy_order(self.ticker, self.allocated_capital)
                     
                     if order and order['status'] == 'closed': # 주문이 체결되었다면
                         self.position_held = True

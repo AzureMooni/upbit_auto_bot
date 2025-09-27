@@ -3,3 +3,5 @@ python-dotenv
 ccxt
 pandas
 pandas-ta
+scikit-learn
+xgboost
