@@ -24,6 +24,9 @@ jobs:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/upbit-auto-bot:latest
+          no-cache: true # Force a fresh build
+          cache-from: type=gha,mode=max # Attempt to use cache, but force fresh build if needed
+          cache-to: type=gha,mode=max,compression=zstd
 
   deploy-to-ec2:
     runs-on: ubuntu-latest
