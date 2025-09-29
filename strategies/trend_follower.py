@@ -1,5 +1,5 @@
 import ccxt
-import time
+import asyncio
 import pandas as pd
 import pandas_ta as ta
 from core.exchange import UpbitService
@@ -20,12 +20,12 @@ class TrendFollower:
 
         print(f"TrendFollower initialized for {self.ticker} with dynamic trailing stop-loss (ATR period: {self.atr_period}). Allocated capital: {self.allocated_capital:,.0f} KRW.")
 
-    def _calculate_atr(self, ticker: str, exchange: ccxt.Exchange):
+    async def _calculate_atr(self, ticker: str, exchange: ccxt.Exchange):
         """
         1시간 봉 데이터를 가져와 14기간 ATR 값을 계산합니다.
         """
         try:
-            ohlcv_1h = exchange.fetch_ohlcv(ticker, '1h', limit=self.atr_period + 10) # ATR 계산에 필요한 충분한 데이터
+            ohlcv_1h = await exchange.fetch_ohlcv(ticker, '1h', limit=self.atr_period + 10) # ATR 계산에 필요한 충분한 데이터
             if not ohlcv_1h or len(ohlcv_1h) < self.atr_period:
                 print(f"Not enough OHLCV data for {ticker} to calculate ATR. (Need at least {self.atr_period}, got {len(ohlcv_1h) if ohlcv_1h else 0})")
                 return None
@@ -46,17 +46,17 @@ class TrendFollower:
             print(f"Error calculating ATR for {ticker}: {e}")
             return None
 
-    def run(self, interval_seconds: int = 5):
+    async def run(self, interval_seconds: int = 5):
         """
         추세 추종 전략을 실행합니다.
         """
         print(f"Starting TrendFollower for {self.ticker}...")
         while True:
             try:
-                current_price = self.upbit_service.get_current_price(self.ticker)
+                current_price = await self.upbit_service.get_current_price(self.ticker)
                 if current_price is None:
                     print(f"Could not fetch current price for {self.ticker}. Retrying...")
-                    time.sleep(interval_seconds)
+                    await asyncio.sleep(interval_seconds)
                     continue
 
                 print(f"Current price for {self.ticker}: {current_price:,.2f} KRW")
@@ -64,7 +64,7 @@ class TrendFollower:
                 if not self.position_held:
                     print(f"No position held. Attempting to buy {self.ticker} at market price.")
                     
-                    order = self.upbit_service.create_market_buy_order(self.ticker, self.allocated_capital)
+                    order = await self.upbit_service.create_market_buy_order(self.ticker, self.allocated_capital)
                     
                     if order and order['status'] == 'closed': # 주문이 체결되었다면
                         self.position_held = True
@@ -72,7 +72,7 @@ class TrendFollower:
                         self.high_water_mark = current_price
                         
                         # 초기 트레일링 스탑 가격 설정 (ATR 기반)
-                        atr_value = self._calculate_atr(self.ticker, self.upbit_service.exchange)
+                        atr_value = await self._calculate_atr(self.ticker, self.upbit_service.exchange)
                         if atr_value is not None:
                             self.trailing_stop_price = current_price - (self.atr_multiplier * atr_value)
                             print(f"🟢 매수 완료: {self.ticker} at {self.entry_price:,.2f} KRW. Dynamic Trailing Stop-Loss set at {self.trailing_stop_price:,.2f} KRW ({self.atr_multiplier} * ATR: {self.atr_multiplier * atr_value:,.2f}).")
@@ -87,7 +87,7 @@ class TrendFollower:
                     # 고점 업데이트 및 트레일링 스탑 조정
                     if current_price > self.high_water_mark:
                         self.high_water_mark = current_price
-                        atr_value = self._calculate_atr(self.ticker, self.upbit_service.exchange)
+                        atr_value = await self._calculate_atr(self.ticker, self.upbit_service.exchange)
                         if atr_value is not None:
                             new_trailing_stop = self.high_water_mark - (self.atr_multiplier * atr_value)
                             if new_trailing_stop > self.trailing_stop_price: # 트레일링 스탑은 위로만 움직임
@@ -100,11 +100,11 @@ class TrendFollower:
                     if current_price <= self.trailing_stop_price:
                         print(f"🚨 트레일링 스탑 로스 발동! {self.ticker} 전량 시장가 매도.")
                         
-                        balances = self.upbit_service.get_balance()
+                        balances = await self.upbit_service.get_balance()
                         amount_to_sell = balances['coins'].get(self.base_currency, 0)
 
                         if amount_to_sell > 0:
-                            order = self.upbit_service.create_market_sell_order(self.ticker, amount_to_sell)
+                            order = await self.upbit_service.create_market_sell_order(self.ticker, amount_to_sell)
                             if order and order['status'] == 'closed':
                                 print(f"🔴 매도 완료: {self.ticker} 전량 시장가 매도. 손실/수익 확정.")
                                 self.position_held = False
@@ -117,30 +117,45 @@ class TrendFollower:
                         self.entry_price = 0.0
                         self.high_water_mark = 0.0
                         self.trailing_stop_price = 0.0
-                        time.sleep(interval_seconds * 5) # 다음 진입 기회를 위해 잠시 대기
+                        await asyncio.sleep(interval_seconds * 5) # 다음 진입 기회를 위해 잠시 대기
                         continue # 다음 루프에서 다시 진입 기회 탐색
 
             except Exception as e:
                 print(f"An error occurred in TrendFollower run loop: {e}")
             
-            time.sleep(interval_seconds)
+            await asyncio.sleep(interval_seconds)
 
 if __name__ == '__main__':
-    # 이 부분은 실제 UpbitService 인스턴스와 연동하여 테스트해야 합니다.
-    # .env 파일에 UPBIT_ACCESS_KEY와 UPBIT_SECRET_KEY가 설정되어 있어야 합니다.
-    try:
-        # UpbitService 인스턴스 생성 및 연결 (실제 API 키 필요)
-        upbit_service = UpbitService()
-        # upbit_service.connect() # 실제 연결은 main.py에서 수행
+    import os
+    from dotenv import load_dotenv
+    import asyncio
 
-        # TrendFollower 인스턴스 생성
-        ticker = 'BTC/KRW' # 예시 티커
-        order_amount_krw = 50000 # 5만원 매수
+    env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
+    if not os.path.exists(env_path):
+        with open(env_path, 'w') as f:
+            f.write("""UPBIT_ACCESS_KEY=YOUR_ACCESS_KEY
+UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
+        print(f"Created a dummy .env file at {env_path}. Please replace YOUR_ACCESS_KEY and UPBIT_SECRET_KEY with actual values.")
+    load_dotenv(env_path)
 
-        trend_follower = TrendFollower(upbit_service, ticker, order_amount_krw)
-        
-        print("TrendFollower example setup complete. To run, integrate into main.py and ensure API keys are set.")
-        # trend_follower.run(interval_seconds=10) # 실제 실행 시 주석 해제
+    async def test_trend_follower():
+        # 이 부분은 실제 UpbitService 인스턴스와 연동하여 테스트해야 합니다.
+        # .env 파일에 UPBIT_ACCESS_KEY와 UPBIT_SECRET_KEY가 설정되어 있어야 합니다.
+        try:
+            # UpbitService 인스턴스 생성 및 연결 (실제 API 키 필요)
+            upbit_service = UpbitService()
+            await upbit_service.connect()
 
-    except Exception as e:
-        print(f"An unexpected error occurred during TrendFollower setup: {e}")
+            # TrendFollower 인스턴스 생성
+            ticker = 'BTC/KRW' # 예시 티커
+            order_amount_krw = 50000 # 5만원 매수
+
+            trend_follower = TrendFollower(upbit_service, ticker, order_amount_krw)
+            
+            print("TrendFollower example setup complete. To run, integrate into main.py and ensure API keys are set.")
+            # await trend_follower.run(interval_seconds=10) # 실제 실행 시 주석 해제
+
+        except Exception as e:
+            print(f"An unexpected error occurred during TrendFollower setup: {e}")
+
+    asyncio.run(test_trend_follower())

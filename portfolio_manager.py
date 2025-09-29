@@ -1,101 +1,148 @@
-import time
-import threading
+import asyncio
+import pandas as pd
+import numpy as np # Added numpy
+from datetime import datetime
 from core.exchange import UpbitService
-from strategies.breakout_trader import BreakoutTrader # Only BreakoutTrader is used
-from scanner import find_hot_coin_live # Only find_hot_coin_live is used
+from strategies.breakout_trader import BreakoutTrader
+from dl_model_trainer import DLModelTrainer # For TARGET_COINS
+from rl_model_trainer import RLModelTrainer # Import RLModelTrainer
+from rl_environment import TradingEnv # Import TradingEnv
+import scanner
+from market_regime_detector import MarketRegimeDetector
 
 class PortfolioManager:
     def __init__(self, total_capital: float, max_concurrent_trades: int):
         self.total_capital = total_capital
         self.max_concurrent_trades = max_concurrent_trades
         self.upbit_service = UpbitService()
-        self.upbit_service.connect()
-        self.active_trades = {} # {ticker: {'thread': thread_obj, 'strategy': strategy_obj, 'capital_allocated': float}}
-        self.lock = threading.Lock() # 동시성 제어를 위한 락
+        self.sentiment_analyzer = SentimentAnalyzer()
+        self.active_trades = {}
+        self.ohlcv_cache = {}
 
-        print(f"PortfolioManager initialized with total capital: {self.total_capital:,.0f} KRW, max concurrent trades: {self.max_concurrent_trades}")
+        # 딥러닝 모델 로드
+        self.dl_trainer = DLModelTrainer()
+        self.dl_trainer.load_model()
 
-    def _run_strategy_in_thread(self, strategy_instance):
+        # 강화학습 에이전트 로드
+        self.rl_trainer = RLModelTrainer()
+        self.rl_agent = self.rl_trainer.load_agent()
+        if self.rl_agent is None:
+            print("경고: RL 에이전트를 로드할 수 없습니다. '--mode train-rl'로 먼저 훈련시켜 주세요.")
+
+        # 시장 체제 감지기 초기화
+        self.regime_detector = MarketRegimeDetector()
+
+        print(f"포트폴리오 매니저 초기화 완료. 총 자본: {self.total_capital:,.0f} KRW, 최대 동시 거래: {self.max_concurrent_trades}")
+
+    async def initialize(self):
+        await self.upbit_service.connect()
+
+    async def _run_strategy_task(self, strategy_instance):
         """
-        주어진 전략 인스턴스를 별도의 스레드에서 실행합니다.
+        주어진 전략 인스턴스를 별도의 비동기 태스크에서 실행합니다.
         """
         try:
-            strategy_instance.run()
+            await strategy_instance.run()
         except Exception as e:
-            print(f"Error in strategy thread for {strategy_instance.ticker}: {e}")
+            print(f"Error in strategy task for {strategy_instance.ticker}: {e}")
         finally:
-            # 스레드 종료 후 active_trades에서 제거
-            with self.lock:
-                if strategy_instance.ticker in self.active_trades:
-                    del self.active_trades[strategy_instance.ticker]
-                    print(f"Trade for {strategy_instance.ticker} completed/stopped and removed from active trades.")
+            # 태스크 종료 후 active_trades에서 제거
+            if strategy_instance.ticker in self.active_trades:
+                del self.active_trades[strategy_instance.ticker]
+                print(f"Trade for {strategy_instance.ticker} completed/stopped and removed from active trades.")
 
-    def run(self, scan_interval_seconds: int = 300): # 5분마다 스캔
+    async def run(self, scan_interval_seconds: int = 300): # 5분마다 스캔
         """
-        포트폴리오 관리 로직을 실행합니다.
+        포트폴리오 관리 로직을 실행합니다. (상황 적응형 AI 로직)
         """
-        print("Starting PortfolioManager run loop (ML-based Breakout Strategy)...")
+        print("포트폴리오 매니저 실행 시작 (상황 적응형 AI 모드)...")
+        if self.rl_agent is None or self.dl_trainer.model is None:
+            print("AI 모델이 준비되지 않았습니다. RL 에이전트와 DL 모델을 모두 훈련시켜야 합니다.")
+            return
+
         while True:
             try:
                 # 1. 현재 활성 거래 수 확인
-                with self.lock:
-                    current_active_trades = len(self.active_trades)
+                current_active_trades = len(self.active_trades)
+                if current_active_trades >= self.max_concurrent_trades:
+                    print(f"최대 동시 거래 수({self.max_concurrent_trades})에 도달하여 기존 거래를 모니터링합니다.")
+                    await asyncio.sleep(scan_interval_seconds)
+                    continue
+
+                print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] 새로운 거래 기회 탐색 중... (활성 거래: {current_active_trades}/{self.max_concurrent_trades})")
+
+                # 2. 시장 체제 감지
+                btc_df_daily = await self.upbit_service.fetch_latest_ohlcv('BTC/KRW', 'day', 201)
+                market_regime = self.regime_detector.get_market_regime(btc_df_daily)
                 
-                if current_active_trades < self.max_concurrent_trades:
-                    # 2. 유망 코인 리스트 가져오기 (ML 모델 기반)
-                    print(f"Scanning for hot coins using ML model... (Active trades: {current_active_trades}/{self.max_concurrent_trades})")
-                    hot_coins = find_hot_coin_live(self.upbit_service.exchange)
+                # 3. DL 모델을 이용한 핫 코인 스캔
+                hot_coins = await scanner.find_hot_coin_live(self.upbit_service.exchange, self.dl_trainer, market_regime)
+                
+                if not hot_coins:
+                    print("현재 DL 모델 기준에 맞는 핫 코인이 없습니다.")
+                    await asyncio.sleep(scan_interval_seconds)
+                    continue
+                
+                dl_selected_ticker = hot_coins[0]
+
+                if dl_selected_ticker in self.active_trades:
+                    print(f"{dl_selected_ticker}는 이미 활성 거래 중이므로 건너뜁니다.")
+                    await asyncio.sleep(scan_interval_seconds)
+                    continue
+
+                # 4. RL 에이전트의 최종 승인
+                print(f"DL 모델 선정 코인({dl_selected_ticker})에 대한 RL 에이전트의 최종 승인 확인 중...")
+                df_1h = await self.upbit_service.fetch_latest_ohlcv(dl_selected_ticker, '1h', limit=100)
+                if df_1h.empty or len(df_1h) < TradingEnv(df=pd.DataFrame()).lookback_window:
+                    print(f"{dl_selected_ticker}에 대한 RL 에이전트 평가용 데이터가 부족합니다.")
+                    await asyncio.sleep(scan_interval_seconds)
+                    continue
+                
+                df_1h.fillna(0, inplace=True)
+                temp_env = TradingEnv(df=df_1h.iloc[-TradingEnv(df=pd.DataFrame()).lookback_window:])
+                observation, _ = temp_env.reset()
+                action, _ = self.rl_agent.predict(observation, deterministic=True)
+
+                if action != 1: # 1: 매수
+                    print(f"RL 에이전트가 {dl_selected_ticker}에 대한 매수를 승인하지 않았습니다 (액션: {action}).")
+                    await asyncio.sleep(scan_interval_seconds)
+                    continue
+                
+                print(f"🧠 RL 에이전트: {dl_selected_ticker} 매수 승인!")
+
+                # 5. 시장 감성 분석
+                print(f"시장 감성 분석 중: {dl_selected_ticker}...")
+                sentiment_text, sentiment_reason = await self.sentiment_analyzer.analyze_market_sentiment(dl_selected_ticker)
+                print(f"🌍 시장 감성 AI: 시장 분위기 '{sentiment_text}'. 이유: {sentiment_reason}")
+
+                # 6. 최종 거래 결정 및 실행
+                if sentiment_text in ["매우 긍정적", "긍정적"]:
+                    print(f"✅ 최종 승인: 모든 AI의 의견 일치. {dl_selected_ticker} 거래를 시작합니다.")
+                    current_total_capital = await self.upbit_service.get_total_capital()
+                    capital_for_trade = current_total_capital / (self.max_concurrent_trades - current_active_trades)
                     
-                    if hot_coins:
-                        # ML 모델은 가장 높은 확률의 코인 하나만 반환하도록 변경되었으므로, 첫 번째 코인만 사용
-                        hot_coin_ticker = hot_coins[0]
+                    strategy_instance = BreakoutTrader(
+                        self.upbit_service,
+                        dl_selected_ticker,
+                        allocated_capital=capital_for_trade
+                    )
 
-                        with self.lock:
-                            if hot_coin_ticker in self.active_trades:
-                                print(f"Skipping {hot_coin_ticker}: Already an active trade.")
-                                # Continue to next iteration of while loop, not next hot coin
-                                time.sleep(scan_interval_seconds)
-                                continue
-                            if len(self.active_trades) >= self.max_concurrent_trades:
-                                print("Max concurrent trades reached. Waiting for next scan cycle.")
-                                time.sleep(scan_interval_seconds)
-                                continue # 최대 동시 거래 개수에 도달하면 스캔 중단
-
-                        print(f"ML model found promising coin: {hot_coin_ticker}. Launching BreakoutTrader.")
-                        
-                        # 3. 자본 할당
-                        current_total_capital = self.upbit_service.get_total_capital()
-                        capital_for_trade = current_total_capital / (self.max_concurrent_trades - current_active_trades) if (self.max_concurrent_trades - current_active_trades) > 0 else current_total_capital # 남은 슬롯에 균등 분배
-                        
-                        strategy_instance = BreakoutTrader(
-                            self.upbit_service,
-                            hot_coin_ticker,
-                            allocated_capital=capital_for_trade
-                        )
-
-                        # 별도의 스레드로 전략 실행
-                        trade_thread = threading.Thread(target=self._run_strategy_in_thread, args=(strategy_instance,))
-                        trade_thread.daemon = True # 메인 프로그램 종료 시 함께 종료
-                        trade_thread.start()
-                        with self.lock:
-                            self.active_trades[hot_coin_ticker] = {
-                                'thread': trade_thread,
-                                'strategy': strategy_instance,
-                                'capital_allocated': capital_for_trade
-                            }
-                        print(f"Launched {type(strategy_instance).__name__} for {hot_coin_ticker} with {capital_for_trade:,.0f} KRW allocated.")
-                    else:
-                        print("ML model found no hot coins with high buy probability in this scan cycle. Waiting...")
+                    trade_task = asyncio.create_task(self._run_strategy_task(strategy_instance))
+                    self.active_trades[dl_selected_ticker] = {
+                        'task': trade_task,
+                        'strategy': strategy_instance,
+                        'capital_allocated': capital_for_trade
+                    }
+                    print(f"{type(strategy_instance).__name__} 전략으로 {dl_selected_ticker} 거래 시작. 할당 자본: {capital_for_trade:,.0f} KRW")
                 else:
-                    print("Max concurrent trades reached. Monitoring existing trades.")
+                    print(f"❌ 최종 거부: 시장 감성({sentiment_text})이 긍정적이지 않아 거래를 시작하지 않습니다.")
 
             except Exception as e:
-                print(f"An error occurred in PortfolioManager run loop: {e}")
+                print(f"포트폴리오 매니저 실행 루프 중 에러 발생: {e}")
             
-            time.sleep(scan_interval_seconds)
+            await asyncio.sleep(scan_interval_seconds)
 
 if __name__ == '__main__':
-    # 테스트를 위한 임시 .env 파일 생성 (필요시)
     import os
     from dotenv import load_dotenv
     env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
@@ -106,10 +153,14 @@ UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
         print(f"Created a dummy .env file at {env_path}. Please replace YOUR_ACCESS_KEY and UPBIT_SECRET_KEY with actual values.")
     load_dotenv(env_path)
 
-    # PortfolioManager 테스트 예시
-    # 실제 API 키가 .env 파일에 설정되어 있어야 합니다.
-    try:
-        manager = PortfolioManager(total_capital=1_000_000, max_concurrent_trades=3) # 100만원, 최대 3개 동시 거래
-        manager.run(scan_interval_seconds=60) # 1분마다 스캔
-    except Exception as e:
-        print(f"PortfolioManager test failed: {e}")
+    async def main_async():
+        # PortfolioManager 테스트 예시
+        # 실제 API 키가 .env 파일에 설정되어 있어야 합니다.
+        try:
+            manager = PortfolioManager(total_capital=1_000_000, max_concurrent_trades=3) # 100만원, 최대 3개 동시 거래
+            await manager.initialize()
+            await manager.run(scan_interval_seconds=60) # 1분마다 스캔
+        except Exception as e:
+            print(f"PortfolioManager test failed: {e}")
+
+    asyncio.run(main_async())

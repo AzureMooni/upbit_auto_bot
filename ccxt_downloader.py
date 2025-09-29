@@ -3,8 +3,15 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 import time
+from dl_model_trainer import DLModelTrainer # Changed to DLModelTrainer
 
-def download_ohlcv_data(start_date_str: str, end_date_str: str, tickers: list, timeframe: str = '1h', limit: int = 200):
+def download_ohlcv_data(start_date_str: str, end_date_str: str, tickers: list = None, timeframe: str = '1h', limit: int = 200):
+    """
+    지정된 기간 동안 각 코인의 OHLCV 데이터를 다운로드하여 CSV 파일로 저장합니다.
+    """
+    if tickers is None:
+        tickers = DLModelTrainer.TARGET_COINS # Use DLModelTrainer.TARGET_COINS if not specified
+    
     """
     지정된 기간 동안 각 코인의 OHLCV 데이터를 다운로드하여 CSV 파일로 저장합니다.
     """
@@ -21,7 +28,8 @@ def download_ohlcv_data(start_date_str: str, end_date_str: str, tickers: list, t
         all_ohlcv = []
         
         # ccxt는 UTC 타임스탬프를 사용하므로, 시작 날짜를 UTC로 변환
-        since_timestamp = exchange.parse8601(start_date_str + 'T00:00:00Z')
+        # since_timestamp = exchange.parse8601(start_date_str + 'T00:00:00Z') # Removed to fetch from earliest
+        since_timestamp = None # Start from the earliest available data
 
         while True:
             try:
@@ -41,7 +49,7 @@ def download_ohlcv_data(start_date_str: str, end_date_str: str, tickers: list, t
                     break
 
                 print(f"  Fetched {len(ohlcv)} data points for {ticker}. Last timestamp: {last_data_dt}")
-                time.sleep(0.1) # Rate limit 방지를 위한 딜레이
+                time.sleep(0.5) # Rate limit 방지를 위한 딜레이 (0.5초)
 
             except ccxt.RateLimitExceeded:
                 print("  Rate limit exceeded. Waiting for 30 seconds...")
@@ -69,5 +77,5 @@ if __name__ == '__main__':
     # 예시 사용법
     start_date = '2023-01-01'
     end_date = '2023-01-31'
-    target_coins = ["BTC/KRW", "ETH/KRW", "XRP/KRW"]
-    download_ohlcv_data(start_date, end_date, target_coins)
+    # target_coins = ["BTC/KRW", "ETH/KRW", "XRP/KRW"] # 이제 ModelTrainer.TARGET_COINS를 기본으로 사용
+    download_ohlcv_data(start_date, end_date) # tickers 인자 없이 호출

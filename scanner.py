@@ -3,333 +3,240 @@ import pandas as pd
 import time
 import pandas_ta as ta
 import os
-from model_trainer import ModelTrainer
+import numpy as np
+import asyncio
+from core.exchange import UpbitService
+from dl_model_trainer import DLModelTrainer
 
-# Initialize ModelTrainer globally
-model_trainer = ModelTrainer(model_path=os.path.join(os.path.dirname(__file__), '..', 'price_predictor.pkl'),
-                             scaler_path=os.path.join(os.path.dirname(__file__), '..', 'price_scaler.pkl'))
-model_trainer.load_model() # Load model if it exists
+async def _get_ohlcv_df(exchange: ccxt.Exchange, ticker: str, timeframe: str, limit: int) -> pd.DataFrame:
+    """
+    Fetches OHLCV data from ccxt and converts it to a pandas DataFrame.
+    """
+    try:
+        ohlcv = await exchange.fetch_ohlcv(ticker, timeframe, limit=limit)
+        if not ohlcv:
+            return pd.DataFrame()
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        return df
+    except Exception as e:
+        print(f"Error fetching OHLCV for {ticker} ({timeframe}): {e}")
+        return pd.DataFrame()
 
-# Helper function for Pivot Points and Breakout Values (for backtesting)
-def _calculate_breakout_levels(df_daily):
+def _calculate_all_indicators(df: pd.DataFrame, ema_short_period: int = 30, ema_long_period: int = 100, adx_period: int = 14, atr_period: int = 14) -> pd.DataFrame:
+    """
+    Calculates all necessary technical indicators on the given DataFrame.
+    Assumes df is 1-hour OHLCV data.
+    """
+    if df.empty:
+        return df
+
+    for col in ['open', 'high', 'low', 'close', 'volume']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
+
+    df_4h = df['close'].resample('4h').ohlc().dropna()
+    if not df_4h.empty:
+        df_4h[f'EMA_{ema_short_period}'] = df_4h['close'].ta.ema(length=ema_short_period)
+        df_4h[f'EMA_{ema_long_period}'] = df_4h['close'].ta.ema(length=ema_long_period)
+        df = df.merge(df_4h[[f'EMA_{ema_short_period}', f'EMA_{ema_long_period}']], left_index=True, right_index=True, how='left')
+        df[f'EMA_{ema_short_period}'] = df[f'EMA_{ema_short_period}'].ffill()
+        df[f'EMA_{ema_long_period}'] = df[f'EMA_{ema_long_period}'].ffill()
+
+    df.ta.rsi(length=14, append=True, close='close')
+    df.ta.bbands(length=20, std=2, append=True, close='close')
+    df.ta.adx(length=adx_period, append=True, high='high', low='low', close='close')
+    df.ta.atr(length=atr_period, append=True, high='high', low='low', close='close')
+
+    df_daily = df['close'].resample('1D').ohlc().dropna()
+    if len(df_daily) >= 2:
+        prev_day = df_daily.iloc[-2]
+        pp = (prev_day['high'] + prev_day['low'] + prev_day['close']) / 3
+        k = 0.5
+        breakout_value = (prev_day['high'] - prev_day['low']) * k
+        df['PP'] = pp
+        df['BREAKOUT_VALUE'] = breakout_value
+        df['PP'] = df['PP'].ffill()
+        df['BREAKOUT_VALUE'] = df['BREAKOUT_VALUE'].ffill()
+
+    return df
+
+def find_hot_coin(df_1h: pd.DataFrame, dl_trainer: DLModelTrainer, market_regime: str) -> list:
+    """
+    Identifies the "hottest" coin from a given DataFrame based on DL model predictions.
+    This is the "backtest" version.
+    """
+    if market_regime == 'Bullish':
+        BUY_PROBABILITY_THRESHOLD = 0.55
+    elif market_regime == 'Bearish':
+        BUY_PROBABILITY_THRESHOLD = 0.75
+    else:  # Sideways
+        BUY_PROBABILITY_THRESHOLD = 0.65
+    
+    print(f"🔥 DL 모델로 핫 코인 스캔 중 (백테스트 모드) | 시장: {market_regime}, 임계값: {BUY_PROBABILITY_THRESHOLD}")
+
+    if dl_trainer.model is None:
+        print("DL 모델이 로드되지 않았습니다.")
+        return []
+
+    # 데이터 파이프라인이 특징 생성을 처리하므로 원본 df를 그대로 전달
+    probabilities = dl_trainer.predict_proba(df_1h.copy())
+    if probabilities is not None:
+        buy_probability = probabilities[1]
+        if buy_probability >= BUY_PROBABILITY_THRESHOLD:
+            print(f"🏆 핫 코인 발견! (매수 확률: {buy_probability:.4f})")
+            return ["DUMMY/KRW"] # 백테스트용 더미 티커 반환
+    return []
+
+async def find_hot_coin_live(exchange: ccxt.Exchange, dl_trainer: DLModelTrainer, market_regime: str) -> list:
+    """
+    실시간으로 모든 타겟 코인의 데이터를 가져와 딥러닝 모델의 예측 확률에 기반하여
+    가장 "뜨거운" 코인을 식별합니다. 가장 좋은 코인 하나를 리스트에 담아 반환합니다.
+    """
+    if market_regime == 'Bullish':
+        BUY_PROBABILITY_THRESHOLD = 0.55
+    elif market_regime == 'Bearish':
+        BUY_PROBABILITY_THRESHOLD = 0.75
+    else:  # Sideways
+        BUY_PROBABILITY_THRESHOLD = 0.65
+
+    print(f"🔥 DL 모델로 핫 코인 스캔 중 (라이브 모드) | 시장: {market_regime}, 임계값: {BUY_PROBABILITY_THRESHOLD}")
+
+    if dl_trainer.model is None:
+        print("DL 모델이 로드되지 않아 핫 코인을 찾을 수 없습니다.")
+        return []
+
+    for ticker in DLModelTrainer.TARGET_COINS:
+        df_1h = await _get_ohlcv_df(exchange, ticker, '1h', limit=dl_trainer.sequence_length + 100)
+
+        if df_1h is None or df_1h.empty or len(df_1h) < dl_trainer.sequence_length:
+            print(f"[{ticker}] 데이터가 예측에 충분하지 않습니다.")
+            continue
+
+        # 데이터 파이프라인이 특징 생성을 처리하므로 원본 df를 그대로 전달
+        probabilities = dl_trainer.predict_proba(df_1h.copy())
+
+        if probabilities is not None:
+            buy_probability = probabilities[1]
+            print(f"  - {ticker} | 매수 확률: {buy_probability:.4f}")
+            if buy_probability >= BUY_PROBABILITY_THRESHOLD:
+                hot_coin_candidates.append((ticker, buy_probability))
+    
+    if not hot_coin_candidates:
+        print("기준에 맞는 핫 코인을 찾지 못했습니다.")
+        return []
+
+    hot_coin_candidates.sort(key=lambda x: x[1], reverse=True)
+    best_coin = hot_coin_candidates[0]
+    print(f"🏆 가장 유력한 핫 코인: {best_coin[0]} (매수 확률: {best_coin[1]:.4f})")
+    
+    return [best_coin[0]]
+
+def get_dynamic_grid_prices(df_1h: pd.DataFrame):
+    """
+    Calculates dynamic grid prices using Bollinger Bands from a 1-hour OHLCV DataFrame.
+    """
+    if df_1h.empty or len(df_1h) < 20:
+        print(f"Not enough OHLCV data to calculate Bollinger Bands. (Need 20, got {len(df_1h)})")
+        return None, None
+    
+    try:
+        df_with_indicators = _calculate_all_indicators(df_1h.copy())
+        
+        upper_price = df_with_indicators['BBU_20_2.0'].iloc[-1]
+        lower_price = df_with_indicators['BBL_20_2.0'].iloc[-1]
+        
+        print(f"Dynamic Grid Prices: Lower Band = {lower_price:.2f}, Upper Band = {upper_price:.2f}")
+        return lower_price, upper_price
+
+    except Exception as e:
+        print(f"Error in get_dynamic_grid_prices: {e}")
+        return None, None
+
+async def get_dynamic_grid_prices_live(upbit_exchange: ccxt.Exchange, ticker: str):
+    """
+    Fetches live 1-hour OHLCV data and calculates dynamic grid prices using Bollinger Bands.
+    """
+    df_1h = await _get_ohlcv_df(upbit_exchange, ticker, '1h', limit=20)
+    if df_1h.empty:
+        return None, None
+    
+    return get_dynamic_grid_prices(df_1h)
+
+def classify_market(df_1h: pd.DataFrame):
+    """
+    Classifies market type based on a 1-hour OHLCV DataFrame,
+    prioritizing breakout conditions, then ADX.
+    """
+    if df_1h.empty or len(df_1h) < 100:
+        print(f"Not enough OHLCV data to classify market. (Need at least 100, got {len(df_1h)})")
+        return "unknown"
+
+    try:
+        df_with_indicators = _calculate_all_indicators(df_1h.copy())
+        current_price = df_1h['close'].iloc[-1]
+
+        if 'PP' in df_with_indicators.columns and 'BREAKOUT_VALUE' in df_with_indicators.columns:
+            pp = df_with_indicators['PP'].iloc[-1]
+            breakout_value = df_with_indicators['BREAKOUT_VALUE'].iloc[-1]
+            if current_price > (pp + breakout_value):
+                return "breakout_up"
+            elif current_price < (pp - breakout_value):
+                return "breakout_down"
+
+        if 'ADX_14' in df_with_indicators.columns:
+            latest_adx = df_with_indicators['ADX_14'].iloc[-1]
+            if latest_adx >= 25:
+                return "trending"
+            elif latest_adx < 20:
+                return "ranging"
+            else:
+                return "choppy"
+        
+        return "unknown"
+
+    except Exception as e:
+        print(f"Error in classify_market: {e}")
+        return "unknown"
+
+async def classify_market_live(upbit_exchange: ccxt.Exchange, ticker: str):
+    """
+    Fetches live 1-hour OHLCV data and classifies market type.
+    """
+    df_1h = await _get_ohlcv_df(upbit_exchange, ticker, '1h', limit=150)
+    if df_1h.empty:
+        return "unknown"
+    
+    return classify_market(df_1h)
+
+def _calculate_breakout_levels_from_df(df_daily: pd.DataFrame):
     if len(df_daily) < 2:
-        return None, None, None, None, None, None # PP, R1, S1, R2, S2, Breakout_Value
+        return None, None, None, None, None, None
 
-    # Previous day's data
     prev_day = df_daily.iloc[-2]
     prev_high = prev_day['high']
     prev_low = prev_day['low']
     prev_close = prev_day['close']
 
-    # Pivot Point (PP)
     pp = (prev_high + prev_low + prev_close) / 3
-
-    # Resistance and Support levels (standard pivot point calculation)
     r1 = (2 * pp) - prev_low
     s1 = (2 * pp) - prev_high
     r2 = pp + (prev_high - prev_low)
     s2 = pp - (prev_high - prev_low)
-
-    # Larry Williams' Breakout Value
-    k = 0.5 # User defined k-factor
+    k = 0.5
     breakout_value = (prev_high - prev_low) * k
 
     return pp, r1, s1, r2, s2, breakout_value
-
-# Helper function for Pivot Points and Breakout Values (for live trading)
-def _calculate_breakout_levels_live(ohlcv_daily):
-    if not ohlcv_daily or len(ohlcv_daily) < 2:
-        return None, None, None, None, None, None # PP, R1, S1, R2, S2, Breakout_Value
-
-    # Previous day's data
-    prev_day = ohlcv_daily[-2]
-    prev_high = prev_day[2]
-    prev_low = prev_day[3]
-    prev_close = prev_day[4]
-
-    # Pivot Point (PP)
-    pp = (prev_high + prev_low + prev_close) / 3
-
-    # Resistance and Support levels (standard pivot point calculation)
-    r1 = (2 * pp) - prev_low
-    s1 = (2 * pp) - prev_high
-    r2 = pp + (prev_high - prev_low)
-    s2 = pp - (prev_high - prev_low)
-
-    # Larry Williams' Breakout Value
-    k = 0.5 # User defined k-factor
-    breakout_value = (prev_high - prev_low) * k
-
-    return pp, r1, s1, r2, s2, breakout_value
-
-def find_hot_coin(historical_data: dict):
-    """
-    과거 데이터를 기반으로 머신러닝 모델을 사용하여 미래 상승 확률이 가장 높은 코인을 찾습니다.
-    """
-    best_coin = None
-    highest_buy_prob = -1
-
-    if not model_trainer.model or not model_trainer.scaler:
-        print("ML model not loaded. Please train and save the model first.")
-        return []
-
-    for symbol, df_1h in historical_data.items():
-        if not symbol.endswith('/KRW'):
-            continue
-
-        # Ensure enough data for feature generation (e.g., 100 periods for some indicators)
-        if len(df_1h) < 150: # A safe margin for various indicators
-            continue
-        
-        try:
-            # Predict buy probability for the latest data point
-            buy_prob = model_trainer.predict(df_1h.copy())
-            
-            if buy_prob is not None and buy_prob > highest_buy_prob:
-                highest_buy_prob = buy_prob
-                best_coin = symbol
-        except Exception as e:
-            print(f"Error predicting for {symbol} in backtesting: {e}")
-            continue
-
-    if best_coin and highest_buy_prob > 0.5: # Only consider if buy probability is reasonably high
-        print(f"ML model selected hot coin (Backtest): {best_coin} with buy probability: {highest_buy_prob:.4f}")
-        return [best_coin]
-    else:
-        print("ML model found no hot coins with high buy probability (Backtest).")
-        return []
-
-def find_hot_coin_live(upbit_exchange: ccxt.Exchange):
-    """
-    실시간으로 머신러닝 모델을 사용하여 미래 상승 확률이 가장 높은 코인을 찾습니다.
-    """
-    best_coin = None
-    highest_buy_prob = -1
-
-    if not model_trainer.model or not model_trainer.scaler:
-        print("ML model not loaded. Please train and save the model first.")
-        return []
-
-    try:
-        markets = upbit_exchange.load_markets()
-        krw_tickers = [m for m in markets if m.endswith('/KRW')]
-
-        for symbol in krw_tickers:
-            # Fetch 1-hour OHLCV data for feature generation
-            ohlcv_1h = upbit_exchange.fetch_ohlcv(symbol, '1h', limit=150) # Need enough data for indicators
-            if not ohlcv_1h or len(ohlcv_1h) < 150:
-                continue
-            
-            df_1h = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df_1h['timestamp'] = pd.to_datetime(df_1h['timestamp'], unit='ms')
-            df_1h.set_index('timestamp', inplace=True)
-
-            try:
-                buy_prob = model_trainer.predict(df_1h.copy())
-                if buy_prob is not None and buy_prob > highest_buy_prob:
-                    highest_buy_prob = buy_prob
-                    best_coin = symbol
-            except Exception as e:
-                print(f"Error predicting for {symbol} in live mode: {e}")
-                continue
-
-    except Exception as e:
-        print(f"Error in find_hot_coin_live: {e}")
-        return []
-
-    if best_coin and highest_buy_prob > 0.5: # Only consider if buy probability is reasonably high
-        print(f"ML model selected hot coin (Live): {best_coin} with buy probability: {highest_buy_prob:.4f}")
-        return [best_coin]
-    else:
-        print("ML model found no hot coins with high buy probability (Live).")
-        return []
-
-def get_dynamic_grid_prices(ticker: str, historical_data: dict):
-    """
-    코인 티커를 입력받아서 해당 코인의 최적 그리드 가격 범위를 볼린저 밴드를 이용해 계산합니다.
-    상단 밴드 (SMA + 2 * 표준편차)를 upper_price로, 하단 밴드 (SMA - 2 * 표준편차)를 lower_price로 설정합니다.
-    historical_data 딕셔너리에서 해당 티커의 과거 데이터를 사용하여 계산합니다.
-    """
-    df = None
-    if ticker in historical_data:
-        df = historical_data[ticker]
-
-    if df is None or df.empty or len(df) < 20:
-        print(f"Not enough OHLCV data for {ticker} to calculate Bollinger Bands. (Need 20, got {len(df) if df is not None else 0})")
-        return None, None
-    
-    try:
-        window = 20
-        df['SMA'] = df['close'].rolling(window=window).mean()
-        df['STD'] = df['close'].rolling(window=window).std()
-        df['Upper_Band'] = df['SMA'] + (df['STD'] * 2)
-        df['Lower_Band'] = df['SMA'] - (df['STD'] * 2)
-        
-        upper_price = df['Upper_Band'].iloc[-1]
-        lower_price = df['Lower_Band'].iloc[-1]
-        
-        print(f"Dynamic Grid Prices for {ticker}: Lower Band = {lower_price:.2f}, Upper Band = {upper_price:.2f}")
-        return lower_price, upper_price
-
-    except Exception as e:
-        print(f"Error in get_dynamic_grid_prices for {ticker}: {e}")
-        return None, None
-
-def get_dynamic_grid_prices_live(ticker: str, upbit_exchange: ccxt.Exchange):
-    """
-    실시간으로 코인 티커의 최적 그리드 가격 범위를 볼린저 밴드를 이용해 계산합니다.
-    """
-    try:
-        ohlcv_1h = upbit_exchange.fetch_ohlcv(ticker, '1h', limit=20)
-        if not ohlcv_1h or len(ohlcv_1h) < 20:
-            print(f"Not enough live OHLCV data for {ticker} to calculate Bollinger Bands. (Need 20, got {len(ohlcv_1h) if ohlcv_1h else 0})")
-            return None, None
-        
-        df = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-
-        window = 20
-        df['SMA'] = df['close'].rolling(window=window).mean()
-        df['STD'] = df['close'].rolling(window=window).std()
-        df['Upper_Band'] = df['SMA'] + (df['STD'] * 2)
-        df['Lower_Band'] = df['SMA'] - (df['STD'] * 2)
-        
-        upper_price = df['Upper_Band'].iloc[-1]
-        lower_price = df['Lower_Band'].iloc[-1]
-        
-        print(f"Dynamic Grid Prices for {ticker} (Live): Lower Band = {lower_price:.2f}, Upper Band = {upper_price:.2f}")
-        return lower_price, upper_price
-
-    except Exception as e:
-        print(f"Error in get_dynamic_grid_prices_live for {ticker}: {e}")
-        return None, None
-
-def classify_market(ticker: str, historical_data: dict):
-    """
-    시장의 '성격'을 진단하는 함수.
-    변동성 돌파 임박 상태를 최우선으로 진단하고, 그 다음 ADX를 기반으로
-    'trending' (추세장), 'ranging' (횡보장), 'choppy' (혼조세)를 반환합니다.
-    historical_data 딕셔너리에서 해당 티커의 과거 데이터를 사용하여 계산합니다.
-    """
-    df_1h = None
-    if ticker in historical_data:
-        df_1h = historical_data[ticker]
-
-    if df_1h is None or df_1h.empty or len(df_1h) < 100: # ADX 계산을 위해 최소 14개 데이터 필요, 100개로 가정
-        print(f"Not enough OHLCV data for {ticker} to classify market. (Need at least 100, got {len(df_1h) if df_1h is not None else 0})")
-        return "unknown"
-
-    try:
-        # 1. 변동성 돌파 임박 상태 진단 (최우선)
-        # 일봉 데이터 가져오기 (1시간 봉에서 일봉으로 리샘플링)
-        df_daily = df_1h['close'].resample('1D').ohlc().dropna()
-        if len(df_daily) >= 2:
-            pp, r1, s1, breakout_value = _calculate_breakout_levels(df_daily)
-            if pp is not None:
-                current_price = df_1h['close'].iloc[-1]
-                if current_price > (pp + breakout_value):
-                    return "breakout_up"
-                elif current_price < (pp - breakout_value):
-                    return "breakout_down"
-
-        # 2. ADX를 이용한 추세/횡보 진단
-        df_1h.ta.adx(length=14, append=True, high='high', low='low', close='close')
-        adx_values = df_1h['ADX_14']
-
-        if len(adx_values) == 0:
-            return "unknown"
-
-        latest_adx = adx_values.iloc[-1] # Use iloc for Series
-
-        if latest_adx >= 25:
-            return "trending"
-        elif latest_adx < 20:
-            return "ranging"
-        else:
-            return "choppy"
-    except Exception as e:
-        print(f"Error in classify_market for {ticker}: {e}")
-        return "unknown"
-
-def classify_market_live(ticker: str, upbit_exchange: ccxt.Exchange):
-    """
-    실시간으로 시장의 '성격'을 진단하는 함수.
-    변동성 돌파 임박 상태를 최우선으로 진단하고, 그 다음 ADX를 기반으로
-    'trending' (추세장), 'ranging' (횡보장), 'choppy' (혼조세)를 반환합니다.
-    """
-    try:
-        # 1. 변동성 돌파 임박 상태 진단 (최우선)
-        # 일봉 데이터 가져오기
-        ohlcv_daily = upbit_exchange.fetch_ohlcv(ticker, '1d', limit=2) # 전일 고가/저가/종가 필요
-        if ohlcv_daily and len(ohlcv_daily) >= 2:
-            pp, r1, s1, breakout_value = _calculate_breakout_levels_live(ohlcv_daily)
-            if pp is not None:
-                current_price = upbit_exchange.fetch_ticker(ticker)['last']
-                if current_price > (pp + breakout_value):
-                    return "breakout_up"
-                elif current_price < (pp - breakout_value):
-                    return "breakout_down"
-
-        # 2. ADX를 이용한 추세/횡보 진단
-        ohlcv_1h = upbit_exchange.fetch_ohlcv(ticker, '1h', limit=100)
-        if not ohlcv_1h or len(ohlcv_1h) < 100:
-            print(f"Not enough live OHLCV data for {ticker} to calculate ADX. (Need at least 100, got {len(ohlcv_1h) if ohlcv_1h else 0})")
-            return "unknown"
-        
-        df = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-
-        df.ta.adx(length=14, append=True, high='high', low='low', close='close')
-        adx_values = df['ADX_14']
-
-        if len(adx_values) == 0:
-            return "unknown"
-
-        latest_adx = adx_values.iloc[-1]
-
-        if latest_adx >= 25:
-            return "trending"
-        elif latest_adx < 20:
-            return "ranging"
-        else:
-            return "choppy"
-
-    except Exception as e:
-        print(f"Error in classify_market_live for {ticker}: {e}")
-        return "unknown"
 
 if __name__ == '__main__':
-    print("--- Running scanner.py examples ---")
+    print("--- scanner.py 기능 테스트 ---")
 
-    # Dummy historical data for backtesting mode
     dummy_ohlcv_btc = [
         [1672531200000, 20000000, 20100000, 19900000, 20050000, 1000],
-        [1672534800000, 20050000, 20200000, 20000000, 20150000, 1200],
-        [1672538400000, 20150000, 20300000, 20100000, 20250000, 1500],
-        [1672542000000, 20250000, 20400000, 20200000, 20350000, 1300],
-        [1672545600000, 20350000, 20500000, 20300000, 20450000, 1100],
-        [1672549200000, 20450000, 20600000, 20400000, 20550000, 1400],
-        [1672552800000, 20550000, 20700000, 20500000, 20650000, 1600],
-        [1672556400000, 20650000, 20800000, 20600000, 20750000, 1700],
-        [1672560000000, 20750000, 20900000, 20700000, 20850000, 1800],
-        [1672563600000, 20850000, 21000000, 20800000, 20950000, 1900],
-        [1672567200000, 20950000, 21100000, 20900000, 21050000, 2000],
-        [1672570800000, 21050000, 21200000, 21000000, 21150000, 2100],
-        [1672574400000, 21150000, 21300000, 21100000, 21250000, 2200],
-        [1672578000000, 21250000, 21400000, 21200000, 21350000, 2300],
-        [1672581600000, 21350000, 21500000, 21300000, 21450000, 2400],
-        [1672585200000, 21450000, 21600000, 21400000, 21550000, 2500],
-        [1672588800000, 21550000, 21700000, 21500000, 21650000, 2600],
-        [1672592400000, 21650000, 21800000, 21600000, 21750000, 2700],
-        [1672596000000, 21750000, 21900000, 21700000, 21850000, 2800],
-        [1672599600000, 21850000, 22000000, 21800000, 21950000, 2900],
-        # Add more data to meet the 24-hour, 50-EMA, 100-ADX requirements
-        # For simplicity, extending with similar trend
-        *[
-            [1672599600000 + (i * 3600000), 21950000 + (i * 10000), 22000000 + (i * 10000), 21800000 + (i * 10000), 21950000 + (i * 10000), 2900 + i]
-            for i in range(20, 101)
+        *[ 
+            [1672531200000 + (i * 3600000), 20050000 + (i*10000), 20200000 + (i*10000), 20000000 + (i*10000), 20150000 + (i*10000), 1200 + i] 
+            for i in range(1, 201)
         ]
     ]
     dummy_df_btc = pd.DataFrame(dummy_ohlcv_btc, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -338,51 +245,51 @@ if __name__ == '__main__':
 
     dummy_historical_data = {
         'BTC/KRW': dummy_df_btc,
-        # Add other dummy data if needed for testing multiple coins
     }
 
-    # Live mode testing
-    print("\n--- Live mode testing with ccxt ---")
-    live_exchange = ccxt.upbit()
+    async def test_scanner_functions():
+        dl_trainer = DLModelTrainer()
+        dl_trainer.load_model()
 
-    # 핫 코인 찾기 예시 (Live)
-    print("\nFinding hot coins (Live)...")
-    hot_coins_live = find_hot_coin_live(live_exchange)
-    if hot_coins_live:
-        print(f"Found {len(hot_coins_live)} hot coins (Live).")
-        first_hot_coin_live = hot_coins_live[0]
-        
-        # 핫 코인의 동적 그리드 가격 가져오기 예시 (Live)
-        print(f"\nGetting dynamic grid prices for {first_hot_coin_live} (Live)...")
-        lower_live, upper_live = get_dynamic_grid_prices_live(first_hot_coin_live, live_exchange)
-        if lower_live and upper_live:
-            print(f"Dynamic Grid Range for {first_hot_coin_live} (Live): Lower={lower_live:.2f}, Upper={upper_live:.2f}")
-    else:
-        print("Could not find any hot coins (Live) to get dynamic grid prices for.")
+        print("\n--- 라이브 모드 테스트 ---")
+        upbit_service = UpbitService()
+        await upbit_service.connect()
+        live_exchange = upbit_service.exchange
 
-    # 시장 분류 예시 (Live)
-    print("\nClassifying market for BTC/KRW (Live)...")
-    market_type_live = classify_market_live('BTC/KRW', live_exchange)
-    print(f"BTC/KRW Market Type (Live): {market_type_live}")
+        print("\n핫 코인 찾기 (라이브)...")
+        hot_coins_live = await find_hot_coin_live(live_exchange, dl_trainer, market_regime='Sideways')
+        if hot_coins_live:
+            print(f"찾은 핫 코인 (라이브): {hot_coins_live}")
+            first_hot_coin_live = hot_coins_live[0]
+            
+            print(f"\n{first_hot_coin_live}의 동적 그리드 가격 가져오기 (라이브)...")
+            lower_live, upper_live = await get_dynamic_grid_prices_live(live_exchange, first_hot_coin_live)
+            if lower_live and upper_live:
+                print(f"동적 그리드 범위 (라이브): Lower={lower_live:.2f}, Upper={upper_live:.2f}")
+        else:
+            print("라이브 모드에서 핫 코인을 찾지 못했습니다.")
 
-    print("\n--- Backtesting mode testing with historical_data ---")
+        print("\nBTC/KRW 시장 유형 분류 (라이브)...")
+        market_type_live = await classify_market_live(live_exchange, 'BTC/KRW')
+        print(f"BTC/KRW 시장 유형 (라이브): {market_type_live}")
 
-    # 핫 코인 찾기 예시 (Backtest)
-    print("\nFinding hot coins (Backtest)...")
-    hot_coins_backtest = find_hot_coin(historical_data=dummy_historical_data)
-    if hot_coins_backtest:
-        print(f"Found {len(hot_coins_backtest)} hot coins (Backtest).")
-        first_hot_coin_backtest = hot_coins_backtest[0]
-        
-        # 핫 코인의 동적 그리드 가격 가져오기 예시 (Backtest)
-        print(f"\nGetting dynamic grid prices for {first_hot_coin_backtest} (Backtest)...")
-        lower_backtest, upper_backtest = get_dynamic_grid_prices(first_hot_coin_backtest, historical_data=dummy_historical_data)
-        if lower_backtest and upper_backtest:
-            print(f"Dynamic Grid Range for {first_hot_coin_backtest} (Backtest): Lower={lower_backtest:.2f}, Upper={upper_backtest:.2f}")
-    else:
-        print("Could not find any hot coins (Backtest) to get dynamic grid prices for.")
+        print("\n--- 백테스트 모드 테스트 ---")
 
-    # 시장 분류 예시 (Backtest)
-    print("\nClassifying market for BTC/KRW (Backtest)...")
-    market_type_backtest = classify_market('BTC/KRW', historical_data=dummy_historical_data)
-    print(f"BTC/KRW Market Type (Backtest): {market_type_backtest}")
+        print("\n핫 코인 찾기 (백테스트)...")
+        hot_coins_backtest = find_hot_coin(df_1h=dummy_historical_data['BTC/KRW'], dl_trainer=dl_trainer, market_regime='Sideways')
+        if hot_coins_backtest:
+            print(f"찾은 핫 코인 (백테스트): {hot_coins_backtest}")
+            first_hot_coin_backtest = hot_coins_backtest[0]
+            
+            print(f"\n{first_hot_coin_backtest}의 동적 그리드 가격 가져오기 (백테스트)...")
+            lower_backtest, upper_backtest = get_dynamic_grid_prices(df_1h=dummy_historical_data['BTC/KRW'])
+            if lower_backtest and upper_backtest:
+                print(f"동적 그리드 범위 (백테스트): Lower={lower_backtest:.2f}, Upper={upper_backtest:.2f}")
+        else:
+            print("백테스트 모드에서 핫 코인을 찾지 못했습니다.")
+
+        print("\nBTC/KRW 시장 유형 분류 (백테스트)...")
+        market_type_backtest = classify_market(df_1h=dummy_historical_data['BTC/KRW'])
+        print(f"BTC/KRW 시장 유형 (백테스트): {market_type_backtest}")
+
+    asyncio.run(test_scanner_functions())

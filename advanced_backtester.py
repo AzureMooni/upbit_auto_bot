@@ -1,9 +1,18 @@
+import os
 import pandas as pd
 import ccxt
 from datetime import datetime, timedelta
-import scanner  # scanner.py import
-import itertools
-from model_trainer import ModelTrainer
+import numpy as np # Added numpy
+from rl_model_trainer import RLModelTrainer # Import RLModelTrainer
+from dl_model_trainer import DLModelTrainer # Import DLModelTrainer for TARGET_COINS
+from rl_environment import TradingEnv # Import TradingEnv
+import scanner # Keep scanner for _calculate_breakout_levels_from_df
+from market_regime_detector import MarketRegimeDetector
+
+class MockSentimentAnalyzer:
+    def analyze_market_sentiment(self, ticker: str):
+        # For backtesting, always return a positive sentiment tuple
+        return ('긍정적', '시뮬레이션 모드에서는 긍정적으로 가정')
 
 # 가상 거래소 및 전략 클래스들
 class SimulatedUpbitService:
@@ -31,6 +40,8 @@ class SimulatedUpbitService:
                 current_price = self.get_current_price(ticker)
                 if current_price:
                     total_krw += amount * current_price
+                else:
+                    print(f"Warning: Could not get current price for {ticker}. Excluding from total capital calculation.")
         return total_krw
 
     def create_market_buy_order(self, ticker, amount_krw, price):
@@ -71,7 +82,7 @@ class SimulatedBreakoutTrader:
         self.allocated_capital = allocated_capital
 
         # Calculate pivot points and R2 for this specific day
-        pp, r1, s1, r2, s2, breakout_value = scanner._calculate_breakout_levels(df_daily)
+        pp, r1, s1, r2, s2, breakout_value = scanner._calculate_breakout_levels_from_df(df_daily)
         self.pp = pp
         self.r2 = r2
 
@@ -110,39 +121,45 @@ class AdvancedBacktester:
         self.end_date = end_date
         self.initial_capital = initial_capital
         self.max_concurrent_trades = max_concurrent_trades
-        self.upbit = ccxt.upbit()
+        self.upbit = ccxt.upbit() # Public client for fetching OHLCV data
         self.optimization_results = []
+        self.sentiment_analyzer = MockSentimentAnalyzer() # Instantiate mock sentiment analyzer
         
-        self.model_trainer = ModelTrainer()
-        if not self.model_trainer.load_model():
-            print("Warning: ML model or scaler files not found. Please train the model first using '--mode train'.")
+        self.dl_trainer = DLModelTrainer() # Instantiate DLModelTrainer
+        self.dl_trainer.load_model() # Load the DL model for prediction
+
+        self.rl_trainer = RLModelTrainer()
+        self.rl_agent = self.rl_trainer.load_agent()
+        if self.rl_agent is None:
+            print("Warning: RL agent not loaded. Please train the agent first using '--mode train-rl'.")
 
     def load_historical_data(self):
-        print("과거 데이터 로딩 중...")
+        print("과거 데이터 로딩 중 (Feather 파일에서)... ")
         all_data = {}
-        markets = self.upbit.load_markets()
-        krw_tickers = [m for m in markets if m.endswith('/KRW')]
-        
-        from_timestamp = self.upbit.parse8601(self.start_date + 'T00:00:00Z')
-        limit = 1000 
+        cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
 
-        for ticker in krw_tickers[:30]: # Limit to top 30 for speed
+        start_dt = pd.to_datetime(self.start_date)
+        end_dt = pd.to_datetime(self.end_date)
+
+        for ticker in DLModelTrainer.TARGET_COINS: # Use TARGET_COINS from DLModelTrainer
+            filename_feather = ticker.replace('/', '_') + '_1h.feather'
+            filepath_feather = os.path.join(cache_dir, filename_feather)
+
+            if not os.path.exists(filepath_feather):
+                print(f"- {ticker} 캐시 파일 ({filepath_feather})을 찾을 수 없습니다. 건너뜁니다.")
+                continue
+
             try:
-                data = []
-                since = from_timestamp
-                while True:
-                    ohlcv = self.upbit.fetch_ohlcv(ticker, '1h', since, limit)
-                    if not ohlcv or ohlcv[-1][0] > self.upbit.parse8601(self.end_date + 'T23:59:59Z'):
-                        break
-                    data.extend(ohlcv)
-                    since = ohlcv[-1][0] + 3600000 # advance 1 hour
-                
-                if data:
-                    df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                    df.set_index('timestamp', inplace=True)
+                df = pd.read_feather(filepath_feather)
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df.set_index('timestamp', inplace=True)
+                df = df[(df.index >= start_dt) & (df.index <= end_dt + timedelta(days=1, microseconds=-1))]
+
+                if not df.empty:
                     all_data[ticker] = df
-                    print(f"- {ticker} 데이터 로딩 완료")
+                    print(f"- {ticker} 데이터 로딩 완료 ({len(df)} 행)")
+                else:
+                    print(f"- {ticker} 데이터가 지정된 기간 내에 없습니다. 건너뜁니다.")
             except Exception as e:
                 print(f"- {ticker} 데이터 로딩 실패: {e}")
         
@@ -159,7 +176,7 @@ class AdvancedBacktester:
         end_dt = pd.to_datetime(self.end_date)
         timeline = pd.date_range(start=start_dt, end=end_dt, freq='h')
 
-        print(f"--- Running ML-based Breakout Strategy Simulation ---")
+        print(f"--- Running RL-based Breakout Strategy Simulation ---")
             
         # Reset portfolio and active traders for each new simulation run
         self.portfolio = SimulatedUpbitService(self.initial_capital, all_ohlcv_data=all_ohlcv_data)
@@ -173,45 +190,111 @@ class AdvancedBacktester:
 
             # Only check for new trades once a day to avoid over-trading
             if timestamp.hour == 9 and not self.active_traders: # Simplified: only one trade at a time for simplicity
-                # Prepare data slice for the scanner
+                # Prepare data slice for the RL agent
                 current_data_slice = {ticker: df[df.index <= timestamp] for ticker, df in all_ohlcv_data.items()}
 
-                # 1. Find a hot coin using ML model
-                hot_coin_ticker = None
-                highest_buy_prob = -1
+                # --- 시장 체제 감지 (추가된 로직) ---
+                regime_detector = MarketRegimeDetector()
+                market_regime = 'Sideways' # 기본값
+                if 'BTC/KRW' in all_ohlcv_data:
+                    btc_df = all_ohlcv_data['BTC/KRW']
+                    # 현재 타임스탬프 이전의 데이터만 사용하여 일봉 생성
+                    btc_daily_df = btc_df[btc_df.index < timestamp]['close'].resample('D').last().to_frame()
+                    market_regime = regime_detector.get_market_regime(btc_daily_df)
+                print(f"[{timestamp}] 시장 체제 감지: {market_regime}")
 
-                if self.model_trainer.model and self.model_trainer.scaler:
-                    for ticker, df_1h in current_data_slice.items():
-                        if not ticker.endswith('/KRW'):
+                # --- DL 모델 기반 핫 코인 선정 로직 (수정됨) ---
+                hot_coin_candidates = []
+                # 시장 체제에 따라 매수 확률 임계값 동적 변경
+                if market_regime == 'Bullish':
+                    BUY_PROBABILITY_THRESHOLD = 0.55
+                elif market_regime == 'Bearish':
+                    BUY_PROBABILITY_THRESHOLD = 0.75
+                else:  # Sideways
+                    BUY_PROBABILITY_THRESHOLD = 0.65
+
+                if self.dl_trainer.model is not None:
+                    print(f"[{timestamp}] DL 모델로 핫 코인 스캔 중 (임계값: {BUY_PROBABILITY_THRESHOLD * 100}%)...")
+                    for ticker in DLModelTrainer.TARGET_COINS:
+                        df_1h = current_data_slice.get(ticker)
+                        if df_1h is None or df_1h.empty:
                             continue
 
-                        if len(df_1h) < 150: # A safe margin for various indicators
+                        MIN_DATA_FOR_DL_PREDICTION = self.dl_trainer.sequence_length + 1
+                        if len(df_1h) < MIN_DATA_FOR_DL_PREDICTION:
                             continue
                         
-                        try:
-                            buy_prob = self.model_trainer.predict(df_1h.copy())
-                            if buy_prob is not None and buy_prob > highest_buy_prob:
-                                highest_buy_prob = buy_prob
-                                hot_coin_ticker = ticker
-                        except Exception as e:
-                            print(f"Error predicting for {ticker} in backtesting: {e}")
-                            continue
+                        # [관망, 매수, 매도] 확률 예측
+                        probabilities = self.dl_trainer.predict_proba(df_1h.copy())
+                        
+                        if probabilities is not None:
+                            buy_probability = probabilities[1] # '매수' 확률
+                            if buy_probability >= BUY_PROBABILITY_THRESHOLD:
+                                hot_coin_candidates.append((ticker, buy_probability))
+                                print(f"  -> 후보 발견: {ticker} (매수 확률: {buy_probability:.2f})")
+                
+                dl_selected_hot_coin_ticker = None
+                best_buy_probability = -1
+                if hot_coin_candidates:
+                    # 매수 확률이 가장 높은 코인을 최종 선택
+                    hot_coin_candidates.sort(key=lambda x: x[1], reverse=True)
+                    dl_selected_hot_coin_ticker = hot_coin_candidates[0][0]
+                    best_buy_probability = hot_coin_candidates[0][1]
+                    print(f"  => 최종 후보 선정: {dl_selected_hot_coin_ticker} (매수 확률: {best_buy_probability:.2f})")
+                
+                # --- RL Agent Decision on DL-selected Hot Coin ---
+                hot_coin_ticker = None
+                if dl_selected_hot_coin_ticker:
+                    print(f"DL Model selected {dl_selected_hot_coin_ticker} with buy probability: {best_buy_probability:.2f}. Now consulting RL agent.")
+                    
+                    if self.rl_agent is not None:
+                        # Prepare observation for RL agent for the DL-selected coin
+                        df_1h_for_rl = current_data_slice.get(dl_selected_hot_coin_ticker)
+                        MIN_DATA_FOR_RL_OBSERVATION = TradingEnv(df=pd.DataFrame()).lookback_window
+                        if len(df_1h_for_rl) < MIN_DATA_FOR_RL_OBSERVATION:
+                            print(f"Not enough OHLCV data for {dl_selected_hot_coin_ticker} to evaluate with RL agent.")
+                            continue # Skip this coin
 
-                if hot_coin_ticker and highest_buy_prob > 0.5: # Only consider if buy probability is reasonably high
-                    print(f"ML model selected hot coin (Backtest): {hot_coin_ticker} with buy probability: {highest_buy_prob:.4f}")
+                        df_1h_for_rl.fillna(0, inplace=True)
+                        temp_env = TradingEnv(df=df_1h_for_rl.iloc[-MIN_DATA_FOR_RL_OBSERVATION:])
+                        observation, _ = temp_env.reset()
 
-                    current_price = current_data_slice[hot_coin_ticker].iloc[-1]['close']
-
-                    # Calculate capital per trade dynamically
-                    current_total_capital = self.portfolio.get_total_capital()
-                    capital_per_trade = current_total_capital / self.max_concurrent_trades # Use max_concurrent_trades for allocation
-
-                    # Launch BreakoutTrader
-                    self.stats['breakout_trader_count'] += 1
-                    df_daily = current_data_slice[hot_coin_ticker]['close'].resample('1D').ohlc().dropna()
-                    self.active_traders[hot_coin_ticker] = SimulatedBreakoutTrader(hot_coin_ticker, current_price, self.portfolio, timestamp, df_daily, allocated_capital=capital_per_trade)
+                        # Predict action using the RL agent
+                        action, _states = self.rl_agent.predict(observation, deterministic=True)
+                        
+                        if action == 1: # Action 1 corresponds to 'Buy'
+                            hot_coin_ticker = dl_selected_hot_coin_ticker
+                            print(f"RL agent confirms BUY for {hot_coin_ticker}.")
+                        else:
+                            print(f"RL agent recommends HOLD/SELL for {dl_selected_hot_coin_ticker} (Action: {action}). Skipping trade.")
+                    else:
+                        print(f"RL agent not loaded. Skipping RL decision for {dl_selected_hot_coin_ticker}.")
                 else:
-                    print("ML model found no hot coins with high buy probability (Backtest).")
+                    print("DL Model found no hot coins matching the criteria.")
+
+                if hot_coin_ticker:
+                    print(f"RL agent selected hot coin (Backtest): {hot_coin_ticker}. Now checking sentiment.")
+
+                    # --- 시장 감성 분석 (모의 로직) ---
+                    sentiment_text, sentiment_reason = self.sentiment_analyzer.analyze_market_sentiment(hot_coin_ticker)
+                    print(f"Sentiment for {hot_coin_ticker}: {sentiment_text} (Reason: {sentiment_reason})")
+
+                    if sentiment_text in ["매우 긍정적", "긍정적", "중립"]:
+                        print(f"Sentiment is favorable ({sentiment_text}). Launching BreakoutTrader.")
+                        current_price = current_data_slice[hot_coin_ticker].iloc[-1]['close']
+
+                        # Calculate capital per trade dynamically
+                        current_total_capital = self.portfolio.get_total_capital()
+                        capital_per_trade = current_total_capital / self.max_concurrent_trades # Use max_concurrent_trades for allocation
+
+                        # Launch BreakoutTrader
+                        self.stats['breakout_trader_count'] += 1
+                        df_daily = current_data_slice[hot_coin_ticker]['close'].resample('1D').ohlc().dropna()
+                        self.active_traders[hot_coin_ticker] = SimulatedBreakoutTrader(hot_coin_ticker, current_price, self.portfolio, timestamp, df_daily, allocated_capital=capital_per_trade)
+                    else:
+                        print(f"Skipping {hot_coin_ticker} due to unfavorable sentiment: {sentiment}.")
+                else:
+                    print("RL agent found no hot coins to trade (Backtest).")
 
             # Update active traders with the current price
             traders_to_close = []

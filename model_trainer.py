@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta
 
 class ModelTrainer:
-    TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW"] # 학습 대상 코인 리스트
+    TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW", "AVAX/KRW", "LINK/KRW"] # 학습 대상 코인 리스트
 
     def __init__(self, model_path='price_predictor.pkl', scaler_path='price_scaler.pkl'):
         self.model_path = model_path
@@ -19,24 +19,26 @@ class ModelTrainer:
         self.scaler = None
 
     def load_historical_data(self, start_date_str: str, end_date_str: str):
-        print("과거 데이터 로딩 중 (CSV 파일에서)...")
+        print("과거 데이터 로딩 중 (Feather 파일에서)... ")
         all_data = {}
-        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
 
         start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
         end_dt = datetime.strptime(end_date_str, '%Y-%m-%d')
 
         for ticker in self.TARGET_COINS:
-            filename = ticker.replace('/', '_') + '_1h.csv'
-            filepath = os.path.join(data_dir, filename)
+            filename_feather = ticker.replace('/', '_') + '_1h.feather'
+            filepath_feather = os.path.join(cache_dir, filename_feather)
 
-            if not os.path.exists(filepath):
-                print(f"- {ticker} 데이터 파일 ({filepath})을 찾을 수 없습니다. 건너뜁니다.")
+            if not os.path.exists(filepath_feather):
+                print(f"- {ticker} 캐시 파일 ({filepath_feather})을 찾을 수 없습니다. 건너뜁니다.")
                 continue
 
             try:
-                df = pd.read_csv(filepath, index_col='timestamp', parse_dates=True)
-                df = df[(df.index >= start_dt) & (df.index <= end_dt + timedelta(days=1, microseconds=-1))] # 종료일의 마지막 시간까지 포함
+                df = pd.read_feather(filepath_feather)
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df.set_index('timestamp', inplace=True)
+                df = df[(df.index >= start_dt) & (df.index <= end_dt + timedelta(days=1, microseconds=-1))]
 
                 if not df.empty:
                     all_data[ticker] = df
