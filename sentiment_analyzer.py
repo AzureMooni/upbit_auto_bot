@@ -1,73 +1,64 @@
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
-import asyncio
 
 class SentimentAnalyzer:
+    """
+    Gemini API를 사용하여 특정 암호화폐에 대한 시장 감성을 분석합니다.
+    """
     def __init__(self):
-        load_dotenv(os.path.join(os.path.dirname(__file__), 'config', '.env'))
-        self.gemini_api_key = os.getenv('GEMINI_API_KEY')
+        load_dotenv()
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY 환경 변수를 설정해주세요.")
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('models/gemini-pro-latest')
 
-        if not self.gemini_api_key:
-            raise ValueError("GEMINI_API_KEY must be set in config/.env")
+    def analyze(self, ticker: str) -> str:
+        """
+        주어진 티커에 대한 시장 감성을 분석하고 결과를 반환합니다.
 
-        genai.configure(api_key=self.gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        Args:
+            ticker (str): 분석할 암호화폐 티커 (예: 'BTC/KRW')
 
-    async def analyze_market_sentiment(self, ticker: str):
-        prompt = f"현재 '{ticker}' 코인 및 전체 암호화폐 시장에 대한 최신 뉴스, 소셜 미디어 동향, 기술적 분석가들의 의견을 종합적으로 분석해줘. 그리고 현재 시장의 투자 심리를 '매우 긍정적', '긍정적', '중립', '부정적', '매우 부정적' 중 하나로 평가하고, 그 이유를 한 문장으로 요약해줘."
-        
+        Returns:
+            str: 분석 결과 ('Positive', 'Negative', 'Neutral')
+        """
+        print(f"Gemini 정보 분석가: '{ticker}'에 대한 시장 감성 분석을 시작합니다...")
         try:
-            response = await self.model.generate_content_async(prompt)
-            sentiment_text = response.text.strip()
+            prompt = f"""
+            당신은 암호화폐 시장 분석 전문가입니다. 
+            현재 '{ticker}' 암호화폐에 대한 최신 뉴스, 소셜 미디어 동향, 커뮤니티 여론을 종합적으로 분석해주세요. 
+            분석 결과를 바탕으로 현재 시장의 전반적인 감성(Sentiment)을 'Positive', 'Negative', 'Neutral' 중 하나로만 평가해주세요. 
+            다른 설명은 필요 없습니다. 오직 세 단어 중 하나로만 답해주세요.
+            """
+            response = self.model.generate_content(prompt)
             
-            # Gemini의 답변에서 최종 '평가'와 '이유'를 추출
-            # 예시 응답: "긍정적. 비트코인 현물 ETF 승인 기대감으로 시장 전반에 매수 심리가 강합니다."
-            
-            sentiment_mapping = {
-                "매우 긍정적": "매우 긍정적",
-                "긍정적": "긍정적",
-                "중립": "중립",
-                "부정적": "부정적",
-                "매우 부정적": "매우 부정적"
-            }
-            
-            sentiment = "중립"
-            reason = "분석 결과가 명확하지 않습니다."
+            # 응답 텍스트에서 키워드 추출
+            result_text = response.text.strip()
+            if 'Positive' in result_text:
+                print("분석 결과: 긍정적 (Positive)")
+                return 'Positive'
+            elif 'Negative' in result_text:
+                print("분석 결과: 부정적 (Negative)")
+                return 'Negative'
+            else:
+                print("분석 결과: 중립 (Neutral)")
+                return 'Neutral'
 
-            for key, value in sentiment_mapping.items():
-                if key in sentiment_text:
-                    sentiment = value
-                    # 평가 이후의 텍스트를 이유로 간주
-                    reason_start_index = sentiment_text.find(key) + len(key)
-                    reason = sentiment_text[reason_start_index:].strip()
-                    if reason.startswith('.'): # Remove leading dot if present
-                        reason = reason[1:].strip()
-                    if not reason: # If no specific reason found after sentiment, use a default
-                        reason = f"{key}으로 평가됩니다."
-                    break
-            
-            return sentiment, reason
         except Exception as e:
-            print(f"Error analyzing sentiment for {ticker}: {e}")
-            return "중립", f"감성 분석 중 오류 발생: {e}"
+            print(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
+            return 'Neutral' # 오류 발생 시 중립으로 간주
 
 if __name__ == '__main__':
-    # .env 파일 생성 (테스트용)
-    env_path = os.path.join(os.path.dirname(__file__), 'config', '.env')
-    if not os.path.exists(env_path):
-        with open(env_path, 'w') as f:
-            f.write("GEMINI_API_KEY=YOUR_GEMINI_API_KEY")
-        print(f"Created a dummy .env file at {env_path}. Please replace YOUR_GEMINI_API_KEY with your actual Gemini API key.")
+    # GOOGLE_API_KEY 환경변수 설정 필요
+    # 예: export GOOGLE_API_KEY='YOUR_API_KEY'
+    analyzer = SentimentAnalyzer()
     
-    async def test_sentiment_analyzer():
-        try:
-            analyzer = SentimentAnalyzer()
-            sentiment, reason = await analyzer.analyze_market_sentiment("BTC/KRW")
-            print(f"BTC/KRW Sentiment: {sentiment}, Reason: {reason}")
-        except ValueError as e:
-            print(f"Configuration Error: {e}")
-        except Exception as e:
-            print(f"An unexpected error occurred during sentiment analysis test: {e}")
+    # 비트코인에 대한 감성 분석 예시
+    sentiment = analyzer.analyze('BTC/KRW')
+    print(f"\n최종 분석된 '/BTC/KRW'의 시장 감성: {sentiment}")
 
-    asyncio.run(test_sentiment_analyzer())
+    # 이더리움에 대한 감성 분석 예시
+    sentiment_eth = analyzer.analyze('ETH/KRW')
+    print(f"\n최종 분석된 'ETH/KRW'의 시장 감성: {sentiment_eth}")
