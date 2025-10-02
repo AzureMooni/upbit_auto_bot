@@ -65,7 +65,7 @@ class DataPreprocessor:
 
             # BTC 시장 체제 병합
             final_df = df_featured.join(btc_regime_df['regime'])
-            final_df['regime'].ffill(inplace=True) # 주말 등 비어있는 시간의 regime 채우기
+            final_df['regime'] = final_df['regime'].ffill() # 주말 등 비어있는 시간의 regime 채우기
 
             # NaN 값 제거 및 캐시 저장
             final_df.dropna(inplace=True)

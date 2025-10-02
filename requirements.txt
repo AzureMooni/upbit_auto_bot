@@ -10,3 +10,4 @@ google-generativeai
 stable-baselines3
 gymnasium
 joblib
+pyarrow
