@@ -1,8 +1,7 @@
 import os
 import pandas as pd
 import ccxt
-from datetime import datetime, timedelta
-import numpy as np # Added numpy
+from datetime import timedelta
 from rl_model_trainer import RLModelTrainer # Import RLModelTrainer
 from dl_model_trainer import DLModelTrainer # Import DLModelTrainer for TARGET_COINS
 from rl_environment import TradingEnv # Import TradingEnv
@@ -99,7 +98,7 @@ class SimulatedBreakoutTrader:
 
         # Take Profit
         if new_price >= self.r2:
-            sell_order = self.upbit_service.create_market_sell_order(self.ticker, self.qty, new_price)
+            self.upbit_service.create_market_sell_order(self.ticker, self.qty, new_price)
             self.active = False
             profit = (new_price - self.entry_price) * self.qty
             print(f"[{timestamp}] 🎉 변동성 돌파 익절: {self.ticker} at {new_price:,.2f} KRW (R2). 수익: {profit:,.2f} KRW")
@@ -107,7 +106,7 @@ class SimulatedBreakoutTrader:
 
         # Stop Loss
         elif new_price <= self.pp:
-            sell_order = self.upbit_service.create_market_sell_order(self.ticker, self.qty, new_price)
+            self.upbit_service.create_market_sell_order(self.ticker, self.qty, new_price)
             self.active = False
             profit = (new_price - self.entry_price) * self.qty
             print(f"[{timestamp}] 🚨 변동성 돌파 손절: {self.ticker} at {new_price:,.2f} KRW (PP). 손실: {profit:,.2f} KRW")
@@ -176,7 +175,7 @@ class AdvancedBacktester:
         end_dt = pd.to_datetime(self.end_date)
         timeline = pd.date_range(start=start_dt, end=end_dt, freq='h')
 
-        print(f"--- Running RL-based Breakout Strategy Simulation ---")
+        print("--- Running RL-based Breakout Strategy Simulation ---")
             
         # Reset portfolio and active traders for each new simulation run
         self.portfolio = SimulatedUpbitService(self.initial_capital, all_ohlcv_data=all_ohlcv_data)
@@ -292,7 +291,7 @@ class AdvancedBacktester:
                         df_daily = current_data_slice[hot_coin_ticker]['close'].resample('1D').ohlc().dropna()
                         self.active_traders[hot_coin_ticker] = SimulatedBreakoutTrader(hot_coin_ticker, current_price, self.portfolio, timestamp, df_daily, allocated_capital=capital_per_trade)
                     else:
-                        print(f"Skipping {hot_coin_ticker} due to unfavorable sentiment: {sentiment}.")
+                        print(f"Skipping {hot_coin_ticker} due to unfavorable sentiment.")
                 else:
                     print("RL agent found no hot coins to trade (Backtest).")
 
@@ -321,7 +320,7 @@ class AdvancedBacktester:
         self.print_final_report(final_asset_value, total_return)
 
     def print_final_report(self, final_asset_value, total_return):
-        print(f"""
+        print("""
 """ + "="*40)
         print("--- 시뮬레이션 결과 ---")
         print(f"기간: {self.start_date} ~ {self.end_date}")

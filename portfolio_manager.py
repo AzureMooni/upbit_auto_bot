@@ -1,5 +1,4 @@
 import asyncio
-import pandas as pd
 import numpy as np # Added numpy
 from datetime import datetime
 from core.exchange import UpbitService
@@ -15,7 +14,6 @@ class PortfolioManager:
         self.total_capital = total_capital
         self.max_concurrent_trades = max_concurrent_trades
         self.upbit_service = UpbitService()
-        self.sentiment_analyzer = SentimentAnalyzer()
         self.active_trades = {}
         self.ohlcv_cache = {}
 
@@ -92,50 +90,55 @@ class PortfolioManager:
 
                 # 4. RL 에이전트의 최종 승인
                 print(f"DL 모델 선정 코인({dl_selected_ticker})에 대한 RL 에이전트의 최종 승인 확인 중...")
-                df_1h = await self.upbit_service.fetch_latest_ohlcv(dl_selected_ticker, '1h', limit=100)
-                if df_1h.empty or len(df_1h) < TradingEnv(df=pd.DataFrame()).lookback_window:
-                    print(f"{dl_selected_ticker}에 대한 RL 에이전트 평가용 데이터가 부족합니다.")
+                window_size = 60  # 훈련 시 사용한 window_size와 동일해야 합니다.
+                df_1h = await self.upbit_service.fetch_latest_ohlcv(dl_selected_ticker, '1h', limit=window_size + 5) # 여유분 데이터 확보
+
+                if df_1h.empty or len(df_1h) < window_size:
+                    print(f"{dl_selected_ticker}에 대한 RL 에이전트 평가용 데이터가 부족합니다 (필요: {window_size}, 현재: {len(df_1h)}).")
                     await asyncio.sleep(scan_interval_seconds)
                     continue
+
+                # 데이터 전처리 (훈련 시와 동일하게)
+                df_1h.drop(columns=['regime'], inplace=True, errors='ignore')
+                df_1h.dropna(inplace=True)
+                df_1h = df_1h.astype(np.float32)
                 
-                df_1h.fillna(0, inplace=True)
-                temp_env = TradingEnv(df=df_1h.iloc[-TradingEnv(df=pd.DataFrame()).lookback_window:])
-                observation, _ = temp_env.reset()
+                if len(df_1h) < window_size:
+                    print(f"{dl_selected_ticker}의 데이터가 전처리 후 너무 적어 평가할 수 없습니다.")
+                    await asyncio.sleep(scan_interval_seconds)
+                    continue
+
+                # 예측을 위한 임시 환경 생성
+                pred_env = TradingEnv(df=df_1h.tail(window_size))
+                observation, _ = pred_env.reset()
+                
                 action, _ = self.rl_agent.predict(observation, deterministic=True)
 
-                if action != 1: # 1: 매수
+                if action != 1:  # 1: 매수
                     print(f"RL 에이전트가 {dl_selected_ticker}에 대한 매수를 승인하지 않았습니다 (액션: {action}).")
                     await asyncio.sleep(scan_interval_seconds)
                     continue
                 
                 print(f"🧠 RL 에이전트: {dl_selected_ticker} 매수 승인!")
 
-                # 5. 시장 감성 분석
-                print(f"시장 감성 분석 중: {dl_selected_ticker}...")
-                sentiment_text, sentiment_reason = await self.sentiment_analyzer.analyze_market_sentiment(dl_selected_ticker)
-                print(f"🌍 시장 감성 AI: 시장 분위기 '{sentiment_text}'. 이유: {sentiment_reason}")
+                # 5. 최종 거래 결정 및 실행
+                print(f"✅ 최종 승인: RL 에이전트의 승인에 따라 {dl_selected_ticker} 거래를 시작합니다.")
+                current_total_capital = await self.upbit_service.get_total_capital()
+                capital_for_trade = current_total_capital / (self.max_concurrent_trades - current_active_trades)
+                
+                strategy_instance = BreakoutTrader(
+                    self.upbit_service,
+                    dl_selected_ticker,
+                    allocated_capital=capital_for_trade
+                )
 
-                # 6. 최종 거래 결정 및 실행
-                if sentiment_text in ["매우 긍정적", "긍정적"]:
-                    print(f"✅ 최종 승인: 모든 AI의 의견 일치. {dl_selected_ticker} 거래를 시작합니다.")
-                    current_total_capital = await self.upbit_service.get_total_capital()
-                    capital_for_trade = current_total_capital / (self.max_concurrent_trades - current_active_trades)
-                    
-                    strategy_instance = BreakoutTrader(
-                        self.upbit_service,
-                        dl_selected_ticker,
-                        allocated_capital=capital_for_trade
-                    )
-
-                    trade_task = asyncio.create_task(self._run_strategy_task(strategy_instance))
-                    self.active_trades[dl_selected_ticker] = {
-                        'task': trade_task,
-                        'strategy': strategy_instance,
-                        'capital_allocated': capital_for_trade
-                    }
-                    print(f"{type(strategy_instance).__name__} 전략으로 {dl_selected_ticker} 거래 시작. 할당 자본: {capital_for_trade:,.0f} KRW")
-                else:
-                    print(f"❌ 최종 거부: 시장 감성({sentiment_text})이 긍정적이지 않아 거래를 시작하지 않습니다.")
+                trade_task = asyncio.create_task(self._run_strategy_task(strategy_instance))
+                self.active_trades[dl_selected_ticker] = {
+                    'task': trade_task,
+                    'strategy': strategy_instance,
+                    'capital_allocated': capital_for_trade
+                }
+                print(f"{type(strategy_instance).__name__} 전략으로 {dl_selected_ticker} 거래 시작. 할당 자본: {capital_for_trade:,.0f} KRW")
 
             except Exception as e:
                 print(f"포트폴리오 매니저 실행 루프 중 에러 발생: {e}")

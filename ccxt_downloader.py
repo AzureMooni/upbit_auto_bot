@@ -19,8 +19,22 @@ def download_ohlcv_data(start_date_str: str, end_date_str: str, tickers: list = 
 
     for ticker in tickers:
         print(f"Downloading {ticker} {timeframe} data from {start_date_str} to {end_date_str}...")
-        all_ohlcv = []
+        
+        filename = ticker.replace('/', '_') + f'_{timeframe}.csv'
+        filepath = os.path.join(data_dir, filename)
+
         since_timestamp = exchange.parse8601(start_date_str + 'T00:00:00Z')
+        if os.path.exists(filepath):
+            try:
+                existing_df = pd.read_csv(filepath, index_col='timestamp', parse_dates=True)
+                if not existing_df.empty:
+                    # 기존 데이터의 마지막 시간 바로 다음 시간부터 가져오도록 설정
+                    since_timestamp = int(existing_df.index[-1].timestamp() * 1000) + 3600000 # +1 hour
+                    print(f"  기존 데이터 발견. 마지막 시간: {existing_df.index[-1]}. 다운로드를 이어갑니다...")
+            except Exception as e:
+                print(f"  기존 파일({filepath})을 읽는 중 오류 발생: {e}. 처음부터 다시 다운로드합니다.")
+
+        all_ohlcv = []
 
         while since_timestamp < exchange.parse8601(end_date_str + 'T00:00:00Z'):
             try:
@@ -50,8 +64,19 @@ def download_ohlcv_data(start_date_str: str, end_date_str: str, tickers: list = 
             
             filename = ticker.replace('/', '_') + f'_{timeframe}.csv'
             filepath = os.path.join(data_dir, filename)
+            
+            if os.path.exists(filepath):
+                try:
+                    existing_df = pd.read_csv(filepath, index_col='timestamp', parse_dates=True)
+                    df = pd.concat([existing_df, df])
+                    df = df[~df.index.duplicated(keep='last')]
+                    df.sort_index(inplace=True)
+                    print("  기존 데이터와 병합 완료.")
+                except Exception as e:
+                    print(f"  기존 파일과 병합 중 오류 발생: {e}. 새 데이터만 저장합니다.")
+
             df.to_csv(filepath)
-            print(f"Successfully saved {len(df)} data points for {ticker} to {filepath}")
+            print(f"성공적으로 {ticker} 데이터를 {filepath}에 저장/업데이트했습니다. 총 {len(df)}개의 데이터.")
         else:
             print(f"No data downloaded for {ticker}.")
 

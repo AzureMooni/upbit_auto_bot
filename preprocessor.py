@@ -27,7 +27,8 @@ class DataPreprocessor:
         df.drop(columns=['SMA_short', 'SMA_long'], inplace=True)
         return df
 
-    def _generate_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    @staticmethod
+    def generate_features(df: pd.DataFrame) -> pd.DataFrame:
         """모든 기술적 지표(feature)를 계산합니다."""
         df.ta.rsi(length=14, append=True)
         df.ta.bbands(length=20, std=2, append=True)
@@ -60,7 +61,7 @@ class DataPreprocessor:
                 continue
 
             # 기술적 지표 생성
-            df_featured = self._generate_features(df_raw)
+            df_featured = DataPreprocessor.generate_features(df_raw)
 
             # BTC 시장 체제 병합
             final_df = df_featured.join(btc_regime_df['regime'])

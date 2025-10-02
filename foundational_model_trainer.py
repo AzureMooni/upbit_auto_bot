@@ -1,9 +1,10 @@
 import pandas as pd
+import numpy as np
 from stable_baselines3 import PPO
 import os
 from trading_env_simple import SimpleTradingEnv
 
-def train_foundational_agent(ticker='BTC/KRW', model_save_path='foundational_agent.zip', total_timesteps=200000):
+def train_foundational_agent(ticker='BTC/KRW', model_save_path='foundational_agent.zip', total_timesteps=200000, start_date=None, end_date=None):
     """
     마스터 AI (Foundational Agent)를 훈련시키는 함수.
     전처리된 캐시 데이터를 사용합니다.
@@ -17,6 +18,10 @@ def train_foundational_agent(ticker='BTC/KRW', model_save_path='foundational_age
 
     df = pd.read_feather(cache_path)
     df.set_index('timestamp', inplace=True)
+
+    if start_date and end_date:
+        df = df[(df.index >= start_date) & (df.index <= end_date)]
+        print(f"훈련 데이터를 {start_date}부터 {end_date}까지로 필터링합니다. ({len(df)}개 데이터)")
 
     # 환경에 필요한 숫자형 데이터만 전달 (regime 등 문자열 컬럼 제외)
     env_df = df.select_dtypes(include=np.number)

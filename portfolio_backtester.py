@@ -1,12 +1,17 @@
 import pandas as pd
 import numpy as np
 import os
+import json
+from pandas.tseries.offsets import DateOffset
+
 # TF_ENABLE_ONEDNN_OPTS=0 환경 변수 설정으로 mutex.cc 오류 방지
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 from stable_baselines3 import PPO
 from trading_env_simple import SimpleTradingEnv
 from dl_model_trainer import DLModelTrainer
-from sentiment_analyzer import SentimentAnalyzer
+from foundational_model_trainer import train_foundational_agent
+from specialist_trainer import train_specialists
 
 class PortfolioBacktester:
     def __init__(self, start_date: str, end_date: str, initial_capital: float = 10_000_000):
@@ -15,24 +20,19 @@ class PortfolioBacktester:
         self.initial_capital = initial_capital
         self.target_coins = DLModelTrainer.TARGET_COINS
         self.cache_dir = 'cache'
-        self.agents = self._load_specialist_agents()
-        self.trade_log = []
-        self.portfolio_history = []
-
-    def _init_analyzer(self):
-        print("\nGemini 정보 분석가를 준비합니다...")
-        try:
-            analyzer = SentimentAnalyzer()
-            print("- 정보 분석가 준비 완료.")
-            return analyzer
-        except ValueError as e:
-            print(f"- 경고: {e}")
-            return None
+        
+        # Walk-forward results
+        self.all_oos_trades = []
+        self.all_oos_portfolio_history = []
+        self.all_oos_specialist_stats = {
+            regime: {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
+            for regime in ['Bullish', 'Bearish', 'Sideways']
+        }
 
     def _load_specialist_agents(self):
         agents = {}
         regimes = ['Bullish', 'Bearish', 'Sideways']
-        print("\n훈련된 전문가 AI 에이전트들을 로드합니다...")
+        print("\n[WFO] 훈련된 전문가 AI 에이전트들을 로드합니다...")
         
         try:
             dummy_df = pd.read_feather(os.path.join(self.cache_dir, f"{self.target_coins[0].replace('/', '_')}_1h.feather"))
@@ -54,93 +54,172 @@ class PortfolioBacktester:
             return None
         return agents
 
-    def run_portfolio_simulation(self):
-        if not self.agents:
-            return
+    def _train_models_for_period(self, train_start, train_end):
+        print(f"\n--- [WFO] 모델 훈련 시작 (기간: {train_start.date()} ~ {train_end.date()}) ---")
+        # 1. Foundational Agent 훈련
+        train_foundational_agent(
+            start_date=train_start, 
+            end_date=train_end, 
+            total_timesteps=100000 # WFO에서는 타임스텝을 줄여서 빠르게 진행
+        )
+        # 2. Specialist Agents 훈련
+        train_specialists(
+            start_date=train_start, 
+            end_date=train_end,
+            total_timesteps_per_specialist=25000 # WFO에서는 타임스텝을 줄여서 빠르게 진행
+        )
+        print("--- [WFO] 모델 훈련 완료 ---")
 
-        print("\n백테스팅을 위해 캐시된 데이터를 로딩합니다...")
-        all_data = {}
-        for ticker in self.target_coins:
-            cache_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_')}_1h.feather")
-            if os.path.exists(cache_path):
-                df = pd.read_feather(cache_path)
-                df.set_index('timestamp', inplace=True)
-                all_data[ticker] = df[(df.index >= self.start_date) & (df.index <= self.end_date)]
-                print(f"  - {ticker} 데이터 로드 완료 ({len(all_data[ticker])}개)")
-
-        if not all_data:
-            print("오류: 백테스팅에 사용할 데이터가 없습니다.")
-            return
-
-        timeline = pd.date_range(self.start_date, self.end_date, freq='h')
-        cash = self.initial_capital
-        holdings = {ticker: 0.0 for ticker in self.target_coins}
-
-        print(f"\n--- 🚀 포트폴리오 백테스팅 시작 ---")
+    def _simulate_on_period(self, agents, all_data, validation_start, validation_end, cash, holdings, purchase_info):
+        print(f"\n--- [WFO] 검증 시뮬레이션 시작 (기간: {validation_start.date()} ~ {validation_end.date()}) ---")
+        
+        timeline = pd.date_range(validation_start, validation_end, freq='h')
+        period_trade_log = []
+        period_portfolio_history = []
 
         for now in timeline:
-            # BTC 데이터가 없거나 현재 시간에 해당 데이터가 없으면 건너뜀
             if 'BTC/KRW' not in all_data or now not in all_data['BTC/KRW'].index:
                 continue
             current_regime = all_data['BTC/KRW'].loc[now, 'regime']
-            agent_to_use = self.agents.get(current_regime, self.agents.get('Sideways'))
-            if agent_to_use is None: continue
+            agent_to_use = agents.get(current_regime, agents.get('Sideways'))
+            if agent_to_use is None:
+                continue
 
             for ticker, df in all_data.items():
-                if now not in df.index: continue
+                if now not in df.index:
+                    continue
 
-                # 현재 타임스탬프의 정수 인덱스 위치를 찾습니다.
                 current_loc = df.index.get_loc(now)
-                
-                # 시작 인덱스가 0보다 작은 경우를 방지합니다.
                 start_loc = max(0, current_loc - 50)
-                
-                # observation 데이터를 정수 인덱스 기반으로 슬라이싱하여 효율을 높입니다.
                 observation_df = df.iloc[start_loc:current_loc]
 
-                if len(observation_df) < 50: continue
+                if len(observation_df) < 50:
+                    continue
 
                 env_data = observation_df.select_dtypes(include=np.number)
                 action, _ = agent_to_use.predict(env_data, deterministic=True)
-                action = int(action) # NumPy 타입을 정수로 변환
-                # print(f"  DEBUG: {now} | {ticker} | AI Predicted Action: {action}")
+                action = int(action)
 
                 current_price = df.loc[now, 'close']
                 log_entry = {'timestamp': now, 'ticker': ticker, 'regime': current_regime, 'action': action, 'price': current_price}
 
                 if action == 1: # Buy
-                    buy_amount = cash * 0.05
-                    if buy_amount > 5000:
-                        holdings[ticker] += buy_amount / current_price
-                        cash -= buy_amount
-                        log_entry.update({'trade': 'BUY', 'amount_krw': buy_amount})
-                        self.trade_log.append(log_entry)
-                        print(f"  {now} | {ticker} | {current_regime} | BUY at {current_price:.2f}")
+                    buy_amount_krw = cash * 0.05
+                    if buy_amount_krw > 5000:
+                        buy_amount_coin = buy_amount_krw / current_price
+                        holdings[ticker] += buy_amount_coin
+                        cash -= buy_amount_krw
+                        purchase_info[ticker]['total_cost'] += buy_amount_krw
+                        purchase_info[ticker]['total_amount'] += buy_amount_coin
+                        log_entry.update({'trade': 'BUY', 'amount_krw': buy_amount_krw})
+                        period_trade_log.append(log_entry)
+
                 elif action == 2: # Sell
                     if holdings[ticker] > 0:
                         sell_amount_coin = holdings[ticker]
-                        cash += sell_amount_coin * current_price
+                        sell_value_krw = sell_amount_coin * current_price
+                        total_cost = purchase_info[ticker]['total_cost']
+                        total_amount = purchase_info[ticker]['total_amount']
+                        
+                        if total_amount > 0:
+                            avg_purchase_price = total_cost / total_amount
+                            profit_loss = (current_price - avg_purchase_price) * sell_amount_coin
+                            stats = self.all_oos_specialist_stats[current_regime]
+                            stats['trades'] += 1
+                            if profit_loss > 0:
+                                stats['wins'] += 1
+                                stats['total_profit'] += profit_loss
+                            else:
+                                stats['losses'] += 1
+                                stats['total_loss'] += abs(profit_loss)
+                        
+                        cash += sell_value_krw
                         holdings[ticker] = 0
+                        purchase_info[ticker] = {'total_cost': 0.0, 'total_amount': 0.0}
                         log_entry.update({'trade': 'SELL', 'amount_coin': sell_amount_coin})
-                        self.trade_log.append(log_entry)
-                        print(f"  {now} | {ticker} | {current_regime} | SELL at {current_price:.2f}")
+                        period_trade_log.append(log_entry)
             
-            # 현재 시점의 순자산 계산 (보유 코인 가치 + 현금)
             current_net_worth = cash
             for t, amount in holdings.items():
                 if amount > 0 and t in all_data and now in all_data[t].index:
                     current_net_worth += amount * all_data[t].loc[now, 'close']
-            self.portfolio_history.append({'timestamp': now, 'net_worth': current_net_worth})
+            period_portfolio_history.append({'timestamp': now, 'net_worth': current_net_worth})
         
-        self._generate_final_report()
+        self.all_oos_trades.extend(period_trade_log)
+        self.all_oos_portfolio_history.extend(period_portfolio_history)
+        
+        print("--- [WFO] 검증 시뮬레이션 완료 ---")
+        return cash, holdings, purchase_info # Return the state for the next fold
 
-    def _generate_final_report(self):
-        if not self.portfolio_history:
+    def run_walk_forward_optimization(self, train_months=24, validation_months=6):
+        print("\n=== 🤖 워크 포워드 최적화 백테스팅 시작 ===")
+        print(f"  - 훈련 기간: {train_months}개월 / 검증 기간: {validation_months}개월")
+
+        # 최적화: 모든 데이터를 처음에 한 번만 로드
+        print("\n- 모든 기간의 데이터를 메모리로 사전 로딩합니다...")
+        full_market_data = {}
+        for ticker in self.target_coins:
+            cache_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_')}_1h.feather")
+            if os.path.exists(cache_path):
+                df = pd.read_feather(cache_path)
+                df.set_index('timestamp', inplace=True)
+                full_market_data[ticker] = df
+                print(f"  - {ticker} 데이터 로드 완료.")
+        
+        if not full_market_data:
+            print("오류: 백테스팅에 사용할 데이터가 없습니다.")
+            return
+
+        current_start = self.start_date
+        fold = 1
+        
+        # Initialize portfolio state
+        cash = self.initial_capital
+        holdings = {ticker: 0.0 for ticker in self.target_coins}
+        purchase_info = {ticker: {'total_cost': 0.0, 'total_amount': 0.0} for ticker in self.target_coins}
+
+        while True:
+            train_start = current_start
+            train_end = train_start + DateOffset(months=train_months)
+            validation_start = train_end
+            validation_end = validation_start + DateOffset(months=validation_months)
+
+            if validation_end > self.end_date:
+                print("\n남은 기간이 검증 기간보다 짧아 최적화를 종료합니다.")
+                break
+
+            print(f"\n================== FOLD {fold} ==================")
+            
+            # 1. Train models on the training period
+            self._train_models_for_period(train_start, train_end)
+            
+            # 2. Load the newly trained agents
+            current_agents = self._load_specialist_agents()
+            if not current_agents:
+                print("오류: 훈련된 모델을 로드할 수 없어 해당 Fold를 건너뜁니다.")
+                current_start += DateOffset(months=validation_months)
+                fold += 1
+                continue
+
+            # 3. Simulate on the validation (out-of-sample) period
+            cash, holdings, purchase_info = self._simulate_on_period(
+                current_agents, full_market_data, validation_start, validation_end, cash, holdings, purchase_info
+            )
+
+            # 4. Slide the window for the next fold
+            current_start += DateOffset(months=validation_months)
+            fold += 1
+
+        print("\n=== ✅ 모든 워크 포워드 검증 완료 ===")
+        self._generate_final_report(self.all_oos_portfolio_history, self.all_oos_trades, self.all_oos_specialist_stats)
+
+    def _generate_final_report(self, portfolio_history, trade_log, specialist_stats):
+        if not portfolio_history:
             print("성과를 분석할 데이터가 없습니다.")
             return
 
-        print("\n--- 📊 최종 포트폴리오 성과 리포트 ---")
-        history_df = pd.DataFrame(self.portfolio_history).set_index('timestamp')
+        print("\n--- 📊 최종 포트폴리오 성과 리포트 (Out-of-Sample 기준) ---")
+        history_df = pd.DataFrame(portfolio_history).set_index('timestamp')
         
         final_net_worth = history_df['net_worth'].iloc[-1]
         total_return = (final_net_worth - self.initial_capital) / self.initial_capital * 100
@@ -157,12 +236,40 @@ class PortfolioBacktester:
         sharpe_ratio = (history_df['daily_return'].mean() / history_df['daily_return'].std()) * np.sqrt(365*24)
         print(f"- 샤프 지수 (시간봉 기준): {sharpe_ratio:.2f}")
 
-        print("\n--- 👨‍🏫 전문가 AI별 거래 분석 ---")
-        trade_df = pd.DataFrame(self.trade_log)
+        print("\n--- 👨‍🏫 전문가 AI별 거래 분석 (Out-of-Sample 기준) ---")
+        trade_df = pd.DataFrame(trade_log)
         if not trade_df.empty:
-            # 'action' 컬럼은 정수이므로 groupby에 직접 사용 가능
-            # 'trade' 컬럼이 이미 log_entry에 추가되므로 이를 사용
             print(trade_df.groupby(['regime', 'trade'])['ticker'].count().unstack(fill_value=0))
         else:
             print("거래 기록이 없습니다.")
         print("-------------------------------------")
+
+        print("\n--- 📈 전문가 AI별 성과 지표 (Out-of-Sample 기준) ---")
+        for regime, stats in specialist_stats.items():
+            trades = stats['trades']
+            if trades > 0:
+                win_rate = (stats['wins'] / trades) * 100 if trades > 0 else 0
+                avg_profit = stats['total_profit'] / stats['wins'] if stats['wins'] > 0 else 0
+                avg_loss = stats['total_loss'] / stats['losses'] if stats['losses'] > 0 else 0
+                
+                print(f"\n[{regime} 전문가]")
+                print(f"  - 총 거래: {trades} 회")
+                print(f"  - 승률: {win_rate:.2f}% ({stats['wins']}승 / {stats['losses']}패)")
+                print(f"  - 평균 이익: {avg_profit:,.0f} KRW")
+                print(f"  - 평균 손실: {avg_loss:,.0f} KRW")
+            else:
+                print(f"\n[{regime} 전문가] 거래 기록 없음")
+        print("-------------------------------------\n")
+
+        with open('specialist_stats.json', 'w') as f:
+            serializable_stats = {}
+            for regime, stats in specialist_stats.items():
+                serializable_stats[regime] = {
+                    'wins': int(stats['wins']),
+                    'losses': int(stats['losses']),
+                    'total_profit': float(stats['total_profit']),
+                    'total_loss': float(stats['total_loss']),
+                    'trades': int(stats['trades']),
+                }
+            json.dump(serializable_stats, f, indent=4)
+        print("\n--- 💾 최종 OOS 성과 지표를 'specialist_stats.json'에 저장했습니다. ---")

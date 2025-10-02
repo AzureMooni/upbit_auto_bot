@@ -1,6 +1,6 @@
 import asyncio
+import time
 import pandas as pd
-import ccxt
 from core.exchange import UpbitService
 from scanner import _calculate_breakout_levels_from_df # Helper for pivot points and breakout values
 
@@ -126,7 +126,7 @@ UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
             ticker = 'BTC/KRW' # 예시 티커
             order_amount_krw = 100000 # 10만원
 
-            breakout_trader = BreakoutTrader(upbit_service, ticker, order_amount_krw)
+            BreakoutTrader(upbit_service, ticker, order_amount_krw)
             # await breakout_trader.run(interval_seconds=60) # 실제 실행 시 주석 해제
             print("BreakoutTrader example setup complete. To run, integrate into main.py and ensure API keys are set.")
 

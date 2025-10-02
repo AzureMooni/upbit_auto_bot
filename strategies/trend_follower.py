@@ -1,9 +1,7 @@
 import ccxt
 import asyncio
 import pandas as pd
-import pandas_ta as ta
 from core.exchange import UpbitService
-from scanner import find_hot_coin # find_hot_coin은 추세 조건을 포함하므로, 여기서는 진입 신호로 활용
 
 class TrendFollower:
     def __init__(self, upbit_service: UpbitService, ticker: str, allocated_capital: float, atr_multiplier: float = 3.0):
@@ -94,7 +92,7 @@ class TrendFollower:
                                 self.trailing_stop_price = new_trailing_stop
                                 print(f"📈 고점 업데이트: {self.high_water_mark:,.2f} KRW. Dynamic Trailing Stop-Loss: {self.trailing_stop_price:,.2f} KRW ({self.atr_multiplier} * ATR: {self.atr_multiplier * atr_value:,.2f}).")
                         else:
-                            print(f"❌ ATR 계산 실패. 트레일링 스탑 조정 불가.")
+                            print("❌ ATR 계산 실패. 트레일링 스탑 조정 불가.")
 
                     # 트레일링 스탑 로스 발동 조건 확인
                     if current_price <= self.trailing_stop_price:
@@ -150,7 +148,7 @@ UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
             ticker = 'BTC/KRW' # 예시 티커
             order_amount_krw = 50000 # 5만원 매수
 
-            trend_follower = TrendFollower(upbit_service, ticker, order_amount_krw)
+            TrendFollower(upbit_service, ticker, order_amount_krw)
             
             print("TrendFollower example setup complete. To run, integrate into main.py and ensure API keys are set.")
             # await trend_follower.run(interval_seconds=10) # 실제 실행 시 주석 해제

@@ -3,11 +3,11 @@ import numpy as np
 from stable_baselines3 import PPO
 import os
 from trading_env_simple import SimpleTradingEnv
-from dl_model_trainer import DLModelTrainer
 
 def train_specialists(foundational_model_path='foundational_agent.zip', 
                       ticker='BTC/KRW', 
-                      total_timesteps_per_specialist=50000):
+                      total_timesteps_per_specialist=50000,
+                      start_date=None, end_date=None):
     """
     마스터 AI를 기반으로 각 시장 상황에 특화된 전문가 AI들을 훈련 (전이학습).
     전처리된 캐시 데이터를 사용합니다.
@@ -25,6 +25,10 @@ def train_specialists(foundational_model_path='foundational_agent.zip',
 
     labeled_df = pd.read_feather(cache_path)
     labeled_df.set_index('timestamp', inplace=True)
+
+    if start_date and end_date:
+        labeled_df = labeled_df[(labeled_df.index >= start_date) & (labeled_df.index <= end_date)]
+        print(f"훈련 데이터를 {start_date}부터 {end_date}까지로 필터링합니다. ({len(labeled_df)}개 데이터)")
 
     print("데이터셋 정보:")
     print(labeled_df['regime'].value_counts())

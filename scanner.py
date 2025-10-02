@@ -2,7 +2,6 @@
 
 import asyncio
 import pandas as pd
-import pandas_ta as ta
 from core.exchange import UpbitService
 from dl_model_trainer import DLModelTrainer
 

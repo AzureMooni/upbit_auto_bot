@@ -1,5 +1,4 @@
 import asyncio
-import math
 from core.exchange import UpbitService
 
 class GridTrader:
@@ -158,7 +157,7 @@ UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
             grid_count = 5
             order_amount_krw = 10000.0 # 각 그리드 라인에서 1만원씩 주문
 
-            grid_trader = GridTrader(upbit_service, ticker, lower_price, upper_price, grid_count, order_amount_krw)
+            GridTrader(upbit_service, ticker, lower_price, upper_price, grid_count, order_amount_krw)
             
             # 그리드 트레이딩 실행 (예: 10초마다 가격 확인)
             # 이 코드는 무한 루프이므로, 실제 사용 시에는 별도의 스레드나 프로세스로 실행하거나

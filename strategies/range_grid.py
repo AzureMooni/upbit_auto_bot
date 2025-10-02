@@ -96,7 +96,7 @@ UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
             grid_count = 5
             order_amount_krw = 10000.0
 
-            range_grid_trader = RangeGridTrader(upbit_service, ticker, lower_price, upper_price, grid_count, order_amount_krw)
+            RangeGridTrader(upbit_service, ticker, lower_price, upper_price, grid_count, order_amount_krw)
             
             print("RangeGridTrader example setup complete. To run, integrate into main.py and ensure API keys are set.")
             # await range_grid_trader.run(interval_seconds=10) # 실제 실행 시 주석 해제

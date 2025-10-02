@@ -1,0 +1,23 @@
+{
+    "Bullish": {
+        "wins": 64,
+        "losses": 62,
+        "total_profit": 801162.4276338945,
+        "total_loss": 214997.5052676745,
+        "trades": 126
+    },
+    "Bearish": {
+        "wins": 20,
+        "losses": 16,
+        "total_profit": 27708.931388690755,
+        "total_loss": 17708.168719371253,
+        "trades": 36
+    },
+    "Sideways": {
+        "wins": 127,
+        "losses": 111,
+        "total_profit": 2659739.3132317555,
+        "total_loss": 899412.3474024442,
+        "trades": 238
+    }
+}

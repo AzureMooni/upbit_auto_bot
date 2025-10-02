@@ -1,6 +1,4 @@
 import ccxt
-import datetime
-import math
 import pandas as pd
 
 class Backtester:

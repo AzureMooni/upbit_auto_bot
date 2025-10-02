@@ -1,5 +1,4 @@
 import os
-import pandas as pd
 from stable_baselines3 import PPO
 from preprocessor import DataPreprocessor
 from rl_environment import PortfolioTradingEnv

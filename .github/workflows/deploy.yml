@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -31,10 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12' # Specify Python 3.12 as per Dockerfile
 
@@ -42,10 +42,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Download latest data
-        run: python main.py --mode download --start-date 2018-01-01 --end-date $(date +%Y-%m-%d)
+        run: python main.py --mode download --start-date $(date -d '1 month ago' +%Y-%m-%d) --end-date $(date +%Y-%m-%d)
 
       - name: Upload data directory as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: historical-data
           path: data/
@@ -55,16 +55,16 @@ jobs:
     needs: download-data
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download historical data artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: historical-data
           path: data/
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -75,7 +75,7 @@ jobs:
         run: python main.py --mode preprocess --start-date 2018-01-01 --end-date $(date +%Y-%m-%d)
 
       - name: Upload cache directory as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: preprocessed-cache
           path: cache/
@@ -85,16 +85,16 @@ jobs:
     needs: preprocess-data
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download preprocessed cache artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: preprocessed-cache
           path: cache/
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -105,7 +105,7 @@ jobs:
         run: python main.py --mode train-rl --start-date 2018-01-01 --end-date $(date +%Y-%m-%d)
 
       - name: Upload RL agent artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: trading-agent
           path: trading_agent.zip
@@ -115,7 +115,7 @@ jobs:
     needs: train-rl-agent
     steps:
       - name: Download RL agent artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: trading-agent
           path: .
@@ -156,4 +156,4 @@ jobs:
               -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
               -v /home/ec2-user/trading_agent.zip:/app/trading_agent.zip \
               ${{ secrets.DOCKERHUB_USERNAME }}/upbit-auto-bot:latest \
-              python main.py --mode start-auto
+              python main.py --mode start-live

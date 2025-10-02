@@ -1,7 +1,5 @@
 import asyncio
 import pandas as pd
-import pandas_ta as ta
-import ccxt
 from core.exchange import UpbitService
 
 class ScalpingBot:
@@ -135,7 +133,7 @@ UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
             ticker = 'BTC/KRW'
             order_amount_krw = 100000 # 10만원
 
-            scalping_bot = ScalpingBot(upbit_service, ticker, order_amount_krw)
+            ScalpingBot(upbit_service, ticker, order_amount_krw)
             # await scalping_bot.run(interval_seconds=15) # 실제 실행 시 주석 해제
             print("ScalpingBot example setup complete. To run, uncomment 'scalping_bot.run()' and ensure API keys are set.")
 
