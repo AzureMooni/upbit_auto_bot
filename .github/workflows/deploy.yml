@@ -36,10 +36,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # Specify Python 3.12 as per Dockerfile
-
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Install pandas-ta from source
+        run: pip install git+https://github.com/aarigs/pandas-ta.git
 
       - name: Download latest data
         run: python main.py --mode download --start-date $(date -d '1 month ago' +%Y-%m-%d) --end-date $(date +%Y-%m-%d)
@@ -57,19 +58,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download historical data artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: historical-data
-          path: data/
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Install pandas-ta from source
+        run: pip install git+https://github.com/aarigs/pandas-ta.git
 
       - name: Preprocess data
         run: python main.py --mode preprocess --start-date 2018-01-01 --end-date $(date +%Y-%m-%d)
@@ -93,13 +86,11 @@ jobs:
           name: preprocessed-cache
           path: cache/
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Install pandas-ta from source
+        run: pip install git+https://github.com/aarigs/pandas-ta.git
 
       - name: Train RL agent
         run: python main.py --mode train-rl --start-date 2018-01-01 --end-date $(date +%Y-%m-%d)
