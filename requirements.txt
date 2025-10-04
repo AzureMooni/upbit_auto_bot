@@ -1,11 +1,6 @@
-requests
-python-dotenv
-ccxt
-pandas
-scikit-learn
 xgboost
-tensorflow
-google-generativeai
-stable-baselines3
-gymnasium
+scikit-learn
+pandas-ta
+ccxt
+python-dotenv
 pyarrow

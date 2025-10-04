@@ -30,3 +30,10 @@ pip-wheel-metadata/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Generated files, data, and models
+*.txt
+*.pkl
+*.h5
+cache/
+data/
