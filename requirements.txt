@@ -5,3 +5,4 @@ ccxt
 python-dotenv
 pyarrow
 stable-baselines3
+tensorboard
