@@ -2,23 +2,24 @@ import asyncio
 import pandas as pd
 from core.exchange import UpbitService
 
+import time
+
 class ScalpingBot:
-    def __init__(self, upbit_service: UpbitService, ticker: str, allocated_capital: float):
+    def __init__(self, upbit_service: UpbitService, ticker: str, allocated_capital: float, trade_amount: float):
         self.upbit_service = upbit_service
         self.ticker = ticker
         self.allocated_capital = allocated_capital
+        self.trade_amount = trade_amount
         self.position_held = False
         self.entry_price = 0.0
+        self.purchased_qty = 0.0
         self.base_currency = ticker.split('/')[0]
         self.take_profit_ratio = 1.02 # +2% 익절
         self.stop_loss_ratio = 0.99 # -1% 손절
 
-        print(f"ScalpingBot initialized for {self.ticker} with TP: +{self.take_profit_ratio-1:.0%}, SL: -{1-self.stop_loss_ratio:.0%}. Allocated capital: {self.allocated_capital:,.0f} KRW.")
+        print(f"단기 부대(ScalpingBot) 초기화: {self.ticker}, 할당 자본: {self.allocated_capital:,.0f} KRW, 거래당 금액: {self.trade_amount:,.0f} KRW")
 
     async def _get_ohlcv(self, timeframe='15m', limit=20):
-        """
-        지정된 타임프레임과 리밋으로 OHLCV 데이터를 가져옵니다.
-        """
         try:
             ohlcv = await self.upbit_service.exchange.fetch_ohlcv(self.ticker, timeframe, limit=limit)
             if not ohlcv or len(ohlcv) < limit:
@@ -32,19 +33,14 @@ class ScalpingBot:
             return None
 
     async def run(self, interval_seconds: int = 15):
-        """
-        스캘핑 전략을 실행합니다.
-        """
-        print(f"Starting ScalpingBot for {self.ticker}...")
+        print(f"단기 부대(ScalpingBot) 운영 시작: {self.ticker}...")
         while True:
             try:
                 df = await self._get_ohlcv(timeframe='15m', limit=20)
                 if df is None:
-                    print(f"Not enough data for {self.ticker}. Retrying...")
                     await asyncio.sleep(interval_seconds)
                     continue
 
-                # EMA 계산
                 df.ta.ema(length=5, append=True, close='close')
                 df.ta.ema(length=10, append=True, close='close')
 
@@ -55,60 +51,45 @@ class ScalpingBot:
 
                 current_price = await self.upbit_service.get_current_price(self.ticker)
                 if current_price is None:
-                    print(f"Could not fetch current price for {self.ticker}. Retrying...")
                     await asyncio.sleep(interval_seconds)
                     continue
 
                 if not self.position_held:
-                    # 진입 신호: 5 EMA가 10 EMA를 상향 돌파 (골든 크로스)
                     if ema5 > ema10 and prev_ema5 <= prev_ema10:
-                        print(f"[{asyncio.current_task()._coro.cr_frame.f_globals['time'].strftime('%Y-%m-%d %H:%M')}] 📈 Golden Cross detected for {self.ticker}. Attempting to BUY.")
-                        order = await self.upbit_service.create_market_buy_order(self.ticker, self.allocated_capital)
-                        if order and order['status'] == 'closed':
+                        print(f"[{time.strftime('%Y-%m-%d %H:%M')}] 📈 단기 부대: {self.ticker} 골든 크로스 발견. 매수 시도.")
+                        order = await self.upbit_service.create_market_buy_order(self.ticker, self.trade_amount)
+                        if order and order.get('status') == 'closed':
                             self.position_held = True
-                            self.entry_price = current_price
-                            print(f"🟢 BUY executed for {self.ticker} at {self.entry_price:,.2f} KRW.")
+                            self.entry_price = order.get('average', current_price)
+                            self.purchased_qty = order.get('filled', self.trade_amount / self.entry_price)
+                            print(f"🟢 단기 부대: 매수 체결. 수량: {self.purchased_qty}, 가격: {self.entry_price:,.2f} KRW.")
                         else:
-                            print(f"❌ BUY order failed or not closed for {self.ticker}.")
+                            print("❌ 단기 부대: 매수 주문 실패 또는 미체결.")
                 else:
-                    # 포지션 보유 중: 익절 또는 손절 확인
                     take_profit_price = self.entry_price * self.take_profit_ratio
                     stop_loss_price = self.entry_price * self.stop_loss_ratio
 
-                    if current_price >= take_profit_price:
-                        print(f"[{asyncio.current_task()._coro.cr_frame.f_globals['time'].strftime('%Y-%m-%d %H:%M')}] 🎉 Take Profit hit for {self.ticker} at {current_price:,.2f} KRW.")
-                        balances = await self.upbit_service.get_balance()
-                        amount_to_sell = balances['coins'].get(self.base_currency, 0)
-                        if amount_to_sell > 0:
-                            order = await self.upbit_service.create_market_sell_order(self.ticker, amount_to_sell)
-                            if order and order['status'] == 'closed':
-                                print(f"🔴 SELL executed for {self.ticker} (Take Profit).")
+                    if current_price >= take_profit_price or current_price <= stop_loss_price:
+                        reason = "익절" if current_price >= take_profit_price else "손절"
+                        print(f"[{time.strftime('%Y-%m-%d %H:%M')}] 🎯 단기 부대: {self.ticker} {reason} 조건 도달. 매도 시도.")
+                        if self.purchased_qty > 0:
+                            order = await self.upbit_service.create_market_sell_order(self.ticker, self.purchased_qty)
+                            if order and order.get('status') == 'closed':
+                                print(f"🔴 단기 부대: 매도 체결 ({reason}).")
                                 self.position_held = False
+                                self.entry_price = 0.0
+                                self.purchased_qty = 0.0
                             else:
-                                print(f"❌ SELL order failed or not closed for {self.ticker}.")
+                                print("❌ 단기 부대: 매도 주문 실패 또는 미체결.")
                         else:
-                            print(f"Warning: No {self.base_currency} to sell for Take Profit.")
-                        return # 전략 종료 (단일 거래 후 종료)
-
-                    elif current_price <= stop_loss_price:
-                        print(f"[{asyncio.current_task()._coro.cr_frame.f_globals['time'].strftime('%Y-%m-%d %H:%M')}] 🚨 Stop Loss hit for {self.ticker} at {current_price:,.2f} KRW.")
-                        balances = await self.upbit_service.get_balance()
-                        amount_to_sell = balances['coins'].get(self.base_currency, 0)
-                        if amount_to_sell > 0:
-                            order = await self.upbit_service.create_market_sell_order(self.ticker, amount_to_sell)
-                            if order and order['status'] == 'closed':
-                                print(f"🔴 SELL executed for {self.ticker} (Stop Loss).")
-                                self.position_held = False
-                            else:
-                                print(f"❌ SELL order failed or not closed for {self.ticker}.")
-                        else:
-                            print(f"Warning: No {self.base_currency} to sell for Stop Loss.")
-                        return # 전략 종료 (단일 거래 후 종료)
+                            print("단기 부대: 경고 - 매도할 수량이 없습니다.")
+                            self.position_held = False # 상태 초기화
 
             except Exception as e:
-                print(f"An error occurred in ScalpingBot run loop for {self.ticker}: {e}")
+                print(f"단기 부대({self.ticker}) 실행 루프 중 오류: {e}")
             
             await asyncio.sleep(interval_seconds)
+
 
 if __name__ == '__main__':
     import os

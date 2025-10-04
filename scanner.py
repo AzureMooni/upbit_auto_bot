@@ -5,14 +5,27 @@ import pandas as pd
 from core.exchange import UpbitService
 from dl_model_trainer import DLModelTrainer
 
-# --- Helper Functions (Pure Logic) ---
+# --- Manual Indicator Implementations ---
+def _manual_rsi(prices, period=14):
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+def _manual_bbands(prices, period=20, std=2):
+    sma = prices.rolling(window=period).mean()
+    rolling_std = prices.rolling(window=period).std()
+    upper_band = sma + (rolling_std * std)
+    lower_band = sma - (rolling_std * std)
+    return upper_band, lower_band
 
 def _calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """주어진 DataFrame에 모든 기술적 지표를 계산하여 추가합니다."""
     if df.empty:
         return df
-    df.ta.rsi(length=14, append=True)
-    df.ta.bbands(length=20, std=2, append=True)
+    df['RSI_14'] = _manual_rsi(df['close'])
+    df['BBU_20_2.0'], df['BBL_20_2.0'] = _manual_bbands(df['close'])
     return df
 
 def _find_best_coin(candidates: list) -> tuple | None:
@@ -37,8 +50,10 @@ async def scan_for_hot_coin(dl_trainer: DLModelTrainer, market_regime: str, upbi
 
     print(f"🔥 핫 코인 스캔 시작 (시장: {market_regime}, 매수 임계값: {threshold:.2f})")
 
-    if dl_trainer.model is None:
+    if dl_trainer is None or dl_trainer.model is None:
         print("경고: DL 모델이 로드되지 않아 핫 코인 스캔을 건너뜁니다.")
+        # In a scalping context, we might not need a DL model, so we can find a coin based on volatility or volume
+        # For now, we just return None if no DL model is present.
         return None
 
     async def get_prediction(ticker: str):

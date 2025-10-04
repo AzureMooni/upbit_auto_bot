@@ -2,12 +2,10 @@ requests
 python-dotenv
 ccxt
 pandas
-pandas-ta
 scikit-learn
 xgboost
 tensorflow
 google-generativeai
 stable-baselines3
 gymnasium
-joblib
 pyarrow

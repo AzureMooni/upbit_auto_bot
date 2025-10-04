@@ -156,4 +156,4 @@ jobs:
               -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
               -v /home/ec2-user/trading_agent.zip:/app/trading_agent.zip \
               ${{ secrets.DOCKERHUB_USERNAME }}/upbit-auto-bot:latest \
-              python main.py --mode start-live
+              python main.py --mode start-commander
