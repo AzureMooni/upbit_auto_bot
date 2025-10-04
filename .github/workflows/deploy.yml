@@ -36,6 +36,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+          python-version: '3.12'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
@@ -57,6 +59,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Download historical data artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: historical-data
+          path: data/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -85,6 +98,11 @@ jobs:
         with:
           name: preprocessed-cache
           path: cache/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
