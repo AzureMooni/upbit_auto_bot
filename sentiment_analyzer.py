@@ -3,18 +3,20 @@ import re
 import google.generativeai as genai
 from dotenv import load_dotenv
 
+
 class SentimentAnalyzer:
     """
-    Gemini API를 사용하여 특정 암호화폐에 대한 시장 감성을 분석하고, 
+    Gemini API를 사용하여 특정 암호화폐에 대한 시장 감성을 분석하고,
     이를 -1.0(극단적 공포)에서 +1.0(극단적 탐욕) 사이의 점수로 계량화합니다.
     """
+
     def __init__(self):
         load_dotenv()
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY 환경 변수를 설정해주세요.")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('models/gemini-pro-latest')
+        self.model = genai.GenerativeModel("models/gemini-pro-latest")
 
     def get_fear_greed_index(self, ticker: str) -> tuple[int, str]:
         """
@@ -45,7 +47,9 @@ class SentimentAnalyzer:
 
             # 점수와 근거를 파싱
             score_match = re.search(r"지수:\s*(\d+)", response_text)
-            narrative_match = re.search(r"핵심 내러티브:\s*(.*)", response_text, re.DOTALL)
+            narrative_match = re.search(
+                r"핵심 내러티브:\s*(.*)", response_text, re.DOTALL
+            )
 
             score = 50  # 기본값: 중립
             narrative = ""
@@ -54,14 +58,18 @@ class SentimentAnalyzer:
                 score = int(score_match.group(1))
                 print(f"  - [Sentiment] 분석된 공포-탐욕 지수: {score}")
             else:
-                print("  - [Sentiment] 경고: 응답에서 공포-탐욕 지수를 찾을 수 없습니다.")
+                print(
+                    "  - [Sentiment] 경고: 응답에서 공포-탐욕 지수를 찾을 수 없습니다."
+                )
                 return 50, "지수 파싱 실패"
 
             if narrative_match:
                 narrative = narrative_match.group(1).strip()
                 print(f"  - [Sentiment] 시장 핵심 내러티브: {narrative}")
             else:
-                print("  - [Sentiment] 경고: 응답에서 핵심 내러티브를 찾을 수 없습니다.")
+                print(
+                    "  - [Sentiment] 경고: 응답에서 핵심 내러티브를 찾을 수 없습니다."
+                )
                 narrative = "내러티브 파싱 실패"
 
             return score, narrative
@@ -70,11 +78,12 @@ class SentimentAnalyzer:
             print(f"  - [Sentiment] Gemini API 호출 중 오류: {e}")
             return 50, "API 호출 실패"
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         analyzer = SentimentAnalyzer()
-        
-        score, narrative = analyzer.get_fear_greed_index('BTC/KRW')
+
+        score, narrative = analyzer.get_fear_greed_index("BTC/KRW")
         print("\n[최종 분석 결과 - BTC/KRW]")
         print(f"  - 공포-탐욕 지수: {score}")
         print(f"  - 핵심 내러티브: {narrative}")

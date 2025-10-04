@@ -3,7 +3,9 @@ class RiskManager:
     Manages risk for trades using strategies like the Kelly Criterion.
     """
 
-    def calculate_kelly_fraction(self, win_rate: float, avg_profit: float, avg_loss: float) -> float:
+    def calculate_kelly_fraction(
+        self, win_rate: float, avg_profit: float, avg_loss: float
+    ) -> float:
         """
         Calculates the optimal fraction of capital to bet using the Kelly Criterion.
 
@@ -19,11 +21,11 @@ class RiskManager:
             return 0.0
 
         win_loss_ratio = avg_profit / avg_loss
-        
+
         # Kelly Criterion formula: K = W - ((1 - W) / R)
         # W = win_rate
         # R = win_loss_ratio
         kelly_fraction = win_rate - ((1 - win_rate) / win_loss_ratio)
-        
+
         # Bet nothing if the edge is negative, and cap at 100%
         return max(0.0, min(kelly_fraction, 1.0))

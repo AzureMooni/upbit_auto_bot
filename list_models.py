@@ -1,4 +1,3 @@
-
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -17,6 +16,6 @@ else:
 
     print("사용 가능한 모델 목록:")
     for m in genai.list_models():
-      # generateContent 메서드를 지원하는 모델만 필터링
-      if 'generateContent' in m.supported_generation_methods:
-        print(f"- {m.name}")
+        # generateContent 메서드를 지원하는 모델만 필터링
+        if "generateContent" in m.supported_generation_methods:
+            print(f"- {m.name}")

@@ -10,14 +10,15 @@ from live_trader import LiveTrader
 from advanced_backtester import AdvancedBacktester
 from rl_model_trainer import RLModelTrainer
 
+
 async def main():
     load_dotenv()
     parser = argparse.ArgumentParser(description="High-Frequency Quant Scalping Bot")
-    
+
     parser.add_argument(
-        "--mode", 
-        type=str, 
-        required=True, 
+        "--mode",
+        type=str,
+        required=True,
         choices=["download", "preprocess", "train", "trade", "backtest", "train-rl"],
         help="""
         Operation mode:
@@ -27,24 +28,44 @@ async def main():
         - 'trade': Start the high-frequency scalping live trader.
         - 'backtest': Run a simulation of the scalping strategy.
         - 'train-rl': Train the Reinforcement Learning agent.
-        """
+        """,
     )
     # General arguments
-    parser.add_argument("--start-date", type=str, default="2023-01-01", help="Start date (YYYY-MM-DD) for download/backtest.")
-    parser.add_argument("--end-date", type=str, default=None, help="End date (YYYY-MM-DD) for download/backtest.")
-    parser.add_argument("--tickers", nargs='+', help="List of target coins (e.g., BTC/KRW ETH/KRW).")
-    parser.add_argument("--capital", type=float, default=50000, help="Initial capital for trading or backtesting.")
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default="2023-01-01",
+        help="Start date (YYYY-MM-DD) for download/backtest.",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default=None,
+        help="End date (YYYY-MM-DD) for download/backtest.",
+    )
+    parser.add_argument(
+        "--tickers", nargs="+", help="List of target coins (e.g., BTC/KRW ETH/KRW)."
+    )
+    parser.add_argument(
+        "--capital",
+        type=float,
+        default=50000,
+        help="Initial capital for trading or backtesting.",
+    )
 
     args = parser.parse_args()
 
     if args.end_date is None:
         from datetime import datetime
-        args.end_date = datetime.now().strftime('%Y-%m-%d')
+
+        args.end_date = datetime.now().strftime("%Y-%m-%d")
 
     # --- Mode Execution --- #
     if args.mode == "download":
         print("📥 Downloading 1-minute data...")
-        download_ohlcv_data(args.start_date, args.end_date, tickers=args.tickers, timeframe='1m')
+        download_ohlcv_data(
+            args.start_date, args.end_date, tickers=args.tickers, timeframe="1m"
+        )
 
     elif args.mode == "preprocess":
         print("⚙️ Preprocessing 1-minute data...")
@@ -60,10 +81,14 @@ async def main():
         print("🚀 Starting high-frequency scalping trader...")
         trader = LiveTrader(capital=args.capital)
         await trader.run()
-        
+
     elif args.mode == "backtest":
         print("🔍 Running backtest for high-frequency scalping strategy...")
-        backtester = AdvancedBacktester(start_date=args.start_date, end_date=args.end_date, initial_capital=args.capital)
+        backtester = AdvancedBacktester(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            initial_capital=args.capital,
+        )
         backtester.run_simulation()
 
     elif args.mode == "train-rl":
@@ -72,6 +97,7 @@ async def main():
         # This can be made configurable with another argparse argument if needed.
         rl_trainer = RLModelTrainer()
         rl_trainer.train_agent(total_timesteps=100000, ticker="BTC/KRW")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
