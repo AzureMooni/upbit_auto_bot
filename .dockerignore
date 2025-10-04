@@ -1,6 +1,10 @@
-__pycache__/
+# Git and environment files
 .git/
+.github/
 .env
+
+# Python caches and artifacts
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -15,8 +19,21 @@ venv/
 env/
 ENV/
 .ipynb_checkpoints/
+
+# Build artifacts
 build/
 dist/
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Documentation, local data, and logs
+README.md
+data/
+cache/
+*.log
+*.txt

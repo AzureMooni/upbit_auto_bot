@@ -19,6 +19,7 @@ venv/
 env/
 ENV/
 .ipynb_checkpoints/
+trader_env/
 build/
 dist/
 *.egg-info/

@@ -1,6 +1,5 @@
 import asyncio
 import joblib
-import pandas as pd
 from core.exchange import UpbitService
 from preprocessor import DataPreprocessor # For generate_features
 

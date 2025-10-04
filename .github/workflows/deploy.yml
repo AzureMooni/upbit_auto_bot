@@ -1,15 +1,37 @@
-name: Deploy to AWS EC2
+name: CI/CD Pipeline for Upbit Auto Bot
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
   schedule:
     - cron: '0 0 * * 0' # Every Sunday at midnight UTC
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install linter
+        run: pip install ruff
+
+      - name: Run linter
+        run: ruff check .
+
   build-and-push-to-dockerhub:
     runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'push' or github.event_name == 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,6 +51,8 @@ jobs:
 
   download-data:
     runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'push' or github.event_name == 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,6 +61,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('''**/requirements.txt''') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -56,6 +88,7 @@ jobs:
   preprocess-data:
     runs-on: ubuntu-latest
     needs: download-data
+    if: github.event_name == 'push' or github.event_name == 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -70,6 +103,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('''**/requirements.txt''') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -89,6 +130,7 @@ jobs:
   train-rl-agent:
     runs-on: ubuntu-latest
     needs: preprocess-data
+    if: github.event_name == 'push' or github.event_name == 'schedule'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -103,6 +145,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('''**/requirements.txt''') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -122,6 +172,7 @@ jobs:
   deploy-agent-to-ec2:
     runs-on: ubuntu-latest
     needs: train-rl-agent
+    if: github.event_name == 'push' or github.event_name == 'schedule'
     steps:
       - name: Download RL agent artifact
         uses: actions/download-artifact@v4
@@ -141,6 +192,7 @@ jobs:
   deploy-application-to-ec2:
     runs-on: ubuntu-latest
     needs: [build-and-push-to-dockerhub, deploy-agent-to-ec2]
+    if: github.event_name == 'push' or github.event_name == 'schedule'
     steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@master
@@ -149,20 +201,52 @@ jobs:
           username: ec2-user
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
           script: |
-            # Docker Hub에서 최신 이미지 pull
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/upbit-auto-bot:latest
+            # Set container names and image name
+            CONTAINER_NAME="upbit-auto-bot-container"
+            OLD_CONTAINER_NAME="upbit-auto-bot-container-old"
+            IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/upbit-auto-bot:latest"
 
-            # 기존 컨테이너 중지 및 삭제 (실행 중인 경우)
-            docker stop upbit-auto-bot-container || true
-            docker rm upbit-auto-bot-container || true
+            echo "### Starting Blue-Green Deployment ###"
+            docker pull $IMAGE_NAME
 
-            # 최신 이미지로 새 컨테이너 실행
-            # UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY, GEMINI_API_KEY는 GitHub Secrets에서 주입
-            # trading_agent.zip 파일은 /home/ec2-user/ 에 있다고 가정하고 Docker 컨테이너에 마운트
-            docker run -d --name upbit-auto-bot-container \
+            # Check if a container is currently running
+            if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+              echo "Current version found. Renaming $CONTAINER_NAME to $OLD_CONTAINER_NAME"
+              docker rename $CONTAINER_NAME $OLD_CONTAINER_NAME
+            fi
+
+            echo "Starting new version: $CONTAINER_NAME"
+            docker run -d --name $CONTAINER_NAME \
               -e UPBIT_ACCESS_KEY="${{ secrets.UPBIT_ACCESS_KEY }}" \
               -e UPBIT_SECRET_KEY="${{ secrets.UPBIT_SECRET_KEY }}" \
               -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
               -v /home/ec2-user/trading_agent.zip:/app/trading_agent.zip \
-              ${{ secrets.DOCKERHUB_USERNAME }}/upbit-auto-bot:latest \
+              $IMAGE_NAME \
               python main.py --mode start-commander
+
+            echo "Waiting for 15 seconds for health check..."
+            sleep 15
+
+            # Health check: See if the new container is up and running
+            if ! [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+              echo "New container failed to start! Rolling back."
+              # Remove the failed container if it exists in a stopped state
+              docker rm $CONTAINER_NAME || true
+              # Rename the old container back, if it exists
+              if [ "$(docker ps -a -q -f name=$OLD_CONTAINER_NAME)" ]; then
+                docker rename $OLD_CONTAINER_NAME $CONTAINER_NAME
+                echo "Rollback successful. Previous version is running."
+              else
+                echo "No previous version to roll back to."
+              fi
+              exit 1
+            else
+              echo "New container started successfully."
+              # Stop and remove the old container if it exists
+              if [ "$(docker ps -a -q -f name=$OLD_CONTAINER_NAME)" ]; then
+                echo "Stopping and removing old version: $OLD_CONTAINER_NAME"
+                docker stop $OLD_CONTAINER_NAME
+                docker rm $OLD_CONTAINER_NAME
+              fi
+              echo "Deployment successful."
+            fi

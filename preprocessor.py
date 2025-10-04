@@ -1,5 +1,4 @@
 import pandas as pd
-import pandas_ta as ta
 import os
 
 # 고빈도 스캘핑을 위한 타겟 코인 목록

@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import joblib
 import os
 
@@ -68,7 +67,7 @@ class AdvancedBacktester:
             if os.path.exists(cache_path):
                 df = pd.read_feather(cache_path).set_index('timestamp')
                 df = df[(df.index >= self.start_date) & (df.index <= self.end_date)]
-                df['ticker'] = ticker # 어떤 코인인지 식별자 추가
+                df['ticker'] = ticker
                 all_data.append(df)
         
         if not all_data:
@@ -78,72 +77,69 @@ class AdvancedBacktester:
         df_full = pd.concat(all_data).sort_index()
         print(f"  총 {len(df_full)}개의 1분봉 데이터로 시뮬레이션을 시작합니다.")
 
-        # 2. 시뮬레이션 루프
-        capital = self.initial_capital
-        trades = []
+        # 2. 벡터화된 시뮬레이션
         features = [
             'RSI_14', 'BBL_20', 'BBM_20', 'BBU_20', 
             'MACD_12_26_9', 'MACDH_12_26_9', 'MACDS_12_26_9'
         ]
         
-        i = 0
-        while i < len(df_full):
-            row = df_full.iloc[i]
+        # 일괄 예측
+        scaled_features = self.scaler.transform(df_full[features])
+        df_full['prediction'] = self.model.predict(scaled_features)
+        
+        # 매수 신호만 필터링
+        buy_signals = df_full[df_full['prediction'] == 1].copy()
+
+        trades = []
+        capital = self.initial_capital
+        last_exit_time = pd.Timestamp.min
+
+        for index, row in buy_signals.iterrows():
+            if index < last_exit_time:
+                continue
+
+            capital_for_trade = capital * 0.5
+            if capital_for_trade < 5000:
+                continue
+
+            entry_time = index
+            entry_price = row['close']
+            ticker = row['ticker']
             
-            # 예측
-            scaled_features = self.scaler.transform(row[features].to_frame().T)
-            prediction = self.model.predict(scaled_features)[0]
+            take_profit_price = entry_price * 1.005
+            stop_loss_price = entry_price * 0.996
 
-            if prediction == 1: # 매수 신호
-                capital_for_trade = capital * 0.5 # 가용 자본의 50% 사용
-                if capital_for_trade < 5000:
-                    i += 1
-                    continue
+            # 효율적인 매도 시점 탐색
+            future_df = df_full.loc[entry_time:].query("ticker == @ticker")
+            
+            tp_hits = future_df[future_df['high'] >= take_profit_price]
+            tp_time = tp_hits.index.min() if not tp_hits.empty else pd.Timestamp.max
 
-                entry_price = row['close']
-                entry_time = row.name
-                ticker = row['ticker']
-                
-                take_profit_price = entry_price * 1.005
-                stop_loss_price = entry_price * 0.996
+            sl_hits = future_df[future_df['low'] <= stop_loss_price]
+            sl_time = sl_hits.index.min() if not sl_hits.empty else pd.Timestamp.max
 
-                # OCO 시뮬레이션 (향후 데이터 탐색)
-                exit_price = None
-                exit_time = None
-                for j in range(i + 1, len(df_full)):
-                    future_row = df_full.iloc[j]
-                    if future_row['ticker'] != ticker: continue # 다른 코인 데이터는 무시
+            exit_price = None
+            exit_time = None
 
-                    if future_row['high'] >= take_profit_price:
-                        exit_price = take_profit_price
-                        exit_time = future_row.name
-                        break
-                    if future_row['low'] <= stop_loss_price:
-                        exit_price = stop_loss_price
-                        exit_time = future_row.name
-                        break
-                
-                if exit_price is not None:
-                    pnl = (exit_price - entry_price) / entry_price * capital_for_trade * (1 - 0.0005 * 2) # 수수료 2번
-                    capital += pnl
-                    trades.append({
-                        'entry_time': entry_time,
-                        'exit_time': exit_time,
-                        'ticker': ticker,
-                        'entry_price': entry_price,
-                        'exit_price': exit_price,
-                        'pnl': pnl
-                    })
-                    # 거래 종료 시점으로 인덱스 점프
-                    loc = df_full.index.get_loc(exit_time)
-                    if isinstance(loc, slice):
-                        i = loc.stop
-                    else:
-                        i = loc
-                else:
-                    i += 1 # 거래가 종료되지 않으면 다음 분으로
-            else:
-                i += 1
+            if tp_time < sl_time:
+                exit_price = take_profit_price
+                exit_time = tp_time
+            elif sl_time < tp_time:
+                exit_price = stop_loss_price
+                exit_time = sl_time
+            
+            if exit_time and exit_time != pd.Timestamp.max:
+                pnl = (exit_price - entry_price) / entry_price * capital_for_trade * (1 - 0.0005 * 2)
+                capital += pnl
+                trades.append({
+                    'entry_time': entry_time,
+                    'exit_time': exit_time,
+                    'ticker': ticker,
+                    'entry_price': entry_price,
+                    'exit_price': exit_price,
+                    'pnl': pnl
+                })
+                last_exit_time = exit_time
 
         # 3. 최종 리포트 생성
         self._generate_report(trades, capital)

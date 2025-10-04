@@ -8,6 +8,7 @@ from preprocessor import DataPreprocessor
 from model_trainer import ModelTrainer
 from live_trader import LiveTrader
 from advanced_backtester import AdvancedBacktester
+from rl_model_trainer import RLModelTrainer
 
 async def main():
     load_dotenv()
@@ -17,7 +18,7 @@ async def main():
         "--mode", 
         type=str, 
         required=True, 
-        choices=["download", "preprocess", "train", "trade", "backtest"],
+        choices=["download", "preprocess", "train", "trade", "backtest", "train-rl"],
         help="""
         Operation mode:
         - 'download': Download 1-minute OHLCV data.
@@ -25,6 +26,7 @@ async def main():
         - 'train': Train the XGBoost model for micro-prediction.
         - 'trade': Start the high-frequency scalping live trader.
         - 'backtest': Run a simulation of the scalping strategy.
+        - 'train-rl': Train the Reinforcement Learning agent.
         """
     )
     # General arguments
@@ -63,6 +65,13 @@ async def main():
         print("🔍 Running backtest for high-frequency scalping strategy...")
         backtester = AdvancedBacktester(start_date=args.start_date, end_date=args.end_date, initial_capital=args.capital)
         backtester.run_simulation()
+
+    elif args.mode == "train-rl":
+        print("🤖 Training Reinforcement Learning agent...")
+        # Note: The ticker is hardcoded to BTC/KRW as an example.
+        # This can be made configurable with another argparse argument if needed.
+        rl_trainer = RLModelTrainer()
+        rl_trainer.train_agent(total_timesteps=100000, ticker="BTC/KRW")
 
 if __name__ == "__main__":
     asyncio.run(main())

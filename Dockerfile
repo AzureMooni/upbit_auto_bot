@@ -4,8 +4,8 @@ FROM python:3.12-slim as builder
 
 WORKDIR /app
 
-# 빌드에 필요한 패키지 설치
-RUN apt-get update && apt-get install -y build-essential
+# 빌드에 필요한 패키지 설치 및 캐시 정리
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
 
 # requirements.txt를 먼저 복사하여 Docker의 레이어 캐싱을 활용
 COPY requirements.txt .
@@ -14,6 +14,7 @@ COPY requirements.txt .
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir git+https://github.com/aarigs/pandas-ta.git
 
 # --- 
 
