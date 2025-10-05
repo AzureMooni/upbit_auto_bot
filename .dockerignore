@@ -19,6 +19,8 @@ venv/
 env/
 ENV/
 .ipynb_checkpoints/
+trader_env/
+dl_bot_env/
 
 # Build artifacts
 build/
@@ -38,3 +40,4 @@ cache/
 *.log
 *.txt
 !requirements.txt
+!runtime-requirements.txt
