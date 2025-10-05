@@ -3,6 +3,9 @@
 name: Autonomous Agent Growth Pipeline
 
 on:
+  push:
+    branches:
+      - main # main 브랜치에 push될 때 실행
   workflow_dispatch:
   schedule:
     - cron: '0 18 * * 6' # 18:00 UTC on Saturday (3 AM KST on Sunday)
