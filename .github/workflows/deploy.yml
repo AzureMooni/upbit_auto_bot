@@ -203,6 +203,11 @@ jobs:
           script: |
             set -e
 
+            echo "### Cleaning up EC2 instance space ###"
+            rm -f /home/ec2-user/trading_agent.zip
+            find /home/ec2-user/ -name "*.log" -type f -delete
+            echo "Previous artifacts and logs removed."
+
             echo "### Pruning Docker system ###"
             docker system prune -a -f
 
