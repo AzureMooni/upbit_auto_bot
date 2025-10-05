@@ -236,9 +236,21 @@ class CommanderBacktester:
         print(f"  - 총 수익률: {benchmark_return:.2f}%")
         print("-" * 50)
 
+        # CI/CD를 위한 머신 리더블 출력
+        print(f"FINAL_SHARPE={sharpe_ratio}")
+
+
+import argparse
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date", default="2023-01-01", help="Backtest start date")
+    parser.add_argument("--end-date", default="2023-12-31", help="Backtest end date")
+    args = parser.parse_args()
+
     commander_backtester = CommanderBacktester(
-        start_date="2023-01-01", end_date="2023-12-31", initial_capital=1_000_000
+        start_date=args.start_date, 
+        end_date=args.end_date, 
+        initial_capital=1_000_000
     )
     commander_backtester.run_simulation()
