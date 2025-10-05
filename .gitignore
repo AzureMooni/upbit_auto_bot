@@ -34,6 +34,7 @@ Thumbs.db
 
 # Generated files, data, and models
 *.txt
+!runtime-requirements.txt
 *.pkl
 *.h5
 cache/

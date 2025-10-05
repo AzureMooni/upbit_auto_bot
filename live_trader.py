@@ -69,35 +69,48 @@ class LiveTrader:
             print(f"  - {ticker} 예측 중 오류: {e}")
             return None
 
-    async def _manage_position(self, ticker: str, entry_price: float, quantity: float):
-        """매수된 포지션에 대한 익절/손절을 관리합니다 (Simulated OCO)."""
-        print(
-            f"  - [Position] {ticker} 포지션 관리 시작. 진입가: {entry_price:,.0f}, 수량: {quantity}"
-        )
-        take_profit_price = entry_price * 1.005
-        stop_loss_price = entry_price * 0.996
+    async def _manage_position(self, ticker: str, quantity: float, take_profit_price: float, stop_loss_price: float, buy_order_id: str):
+        """매수된 포지션에 대한 익절/손절을 OCO 방식으로 관리합니다."""
+        print(f"  - [Position] {ticker} 포지션 관리 시작. 수량: {quantity}, 익절가: {take_profit_price:,.0f}, 손절가: {stop_loss_price:,.0f}")
+
+        # 1. 익절 및 손절 지정가 매도 주문 제출
+        tp_order = await self.upbit_service.create_limit_sell_order(ticker, quantity, take_profit_price)
+        sl_order = await self.upbit_service.create_limit_sell_order(ticker, quantity, stop_loss_price)
+
+        if not tp_order or not sl_order:
+            print(f"  - [Error] {ticker} 익절/손절 주문 제출 실패. 포지션 강제 종료.")
+            # 주문 실패 시 시장가로 전량 매도하여 포지션 정리
+            await self.upbit_service.create_market_sell_order(ticker, quantity)
+            self.positions[ticker] = False
+            return
+
+        tp_order_id = tp_order['id']
+        sl_order_id = sl_order['id']
+
+        print(f"  - [Order] {ticker} 익절 주문 ID: {tp_order_id}, 손절 주문 ID: {sl_order_id}")
 
         while self.positions[ticker]:
             try:
-                current_price = await self.upbit_service.get_current_price(ticker)
-                if current_price is None:
-                    await asyncio.sleep(1)
-                    continue
+                # 주문 상태 조회
+                tp_status = await self.upbit_service.fetch_order(tp_order_id, ticker)
+                sl_status = await self.upbit_service.fetch_order(sl_order_id, ticker)
 
-                if current_price >= take_profit_price:
-                    print(f"  - [SUCCESS] {ticker} 익절! (+0.5%)")
-                    await self.upbit_service.create_market_sell_order(ticker, quantity)
+                if tp_status and tp_status['status'] == 'closed':
+                    print(f"  - [SUCCESS] {ticker} 익절 주문 체결! ({tp_status['price']})")
+                    # 다른 주문 취소
+                    await self.upbit_service.cancel_order(sl_order_id, ticker)
                     break
 
-                if current_price <= stop_loss_price:
-                    print(f"  - [FAILURE] {ticker} 손절! (-0.4%)")
-                    await self.upbit_service.create_market_sell_order(ticker, quantity)
+                if sl_status and sl_status['status'] == 'closed':
+                    print(f"  - [FAILURE] {ticker} 손절 주문 체결! ({sl_status['price']})")
+                    # 다른 주문 취소
+                    await self.upbit_service.cancel_order(tp_order_id, ticker)
                     break
 
             except Exception as e:
                 print(f"  - {ticker} 포지션 관리 중 오류: {e}")
                 break
-            await asyncio.sleep(1)  # 1초마다 가격 확인
+            await asyncio.sleep(0.5)  # 0.5초마다 주문 상태 확인
 
         self.positions[ticker] = False
         print(f"  - [Position] {ticker} 포지션 종료.")
@@ -149,11 +162,14 @@ class LiveTrader:
                                 "filled", capital_for_trade / entry_price
                             )
                             self.positions[ticker] = True
+
+                            # Calculate TP/SL prices here
+                            take_profit_price = entry_price * 1.005
+                            stop_loss_price = entry_price * 0.996
+
                             asyncio.create_task(
-                                self._manage_position(ticker, entry_price, quantity)
+                                self._manage_position(ticker, quantity, take_profit_price, stop_loss_price, order['id'])
                             )
-                            # 한 번에 하나의 포지션만 진입
-                            break
 
                 await asyncio.sleep(60)  # 1분마다 새로운 캔들 확인
 

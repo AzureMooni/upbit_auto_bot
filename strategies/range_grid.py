@@ -1,163 +1,87 @@
+import pandas as pd
 import asyncio
 from strategies.grid_trading import GridTrader
-from scanner import classify_market_live  # Changed to classify_market_live
+from scanner import classify_market_live
 from core.exchange import UpbitService
 
+def generate_sideways_signals(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Bollinger Bands (%B)와 RSI를 사용하여 횡보장 매매 신호를 생성합니다.
+    """
+    # 1. 지표 계산
+    df.ta.bbands(length=20, std=2, append=True)
+    df.ta.rsi(length=14, append=True)
 
-class RangeGridTrader(GridTrader):
-    def __init__(
-        self,
-        upbit_service: UpbitService,
-        ticker: str,
-        lower_price: float,
-        upper_price: float,
-        grid_count: int,
-        allocated_capital: float,
-    ):
-        super().__init__(
-            upbit_service,
-            ticker,
-            lower_price,
-            upper_price,
-            grid_count,
-            allocated_capital,
-        )
-        self.market_type = ""
-        print(
-            f"RangeGridTrader initialized for {self.ticker}. Will only activate in 'ranging' market."
-        )
+    # 2. 신호 생성
+    # 매수: %B가 0.2보다 작고, RSI가 40보다 작을 때
+    buy_conditions = (df['BBP_20_2.0'] < 0.2) & (df['RSI_14'] < 40)
+    # 매도: %B가 0.8보다 크고, RSI가 60보다 클 때
+    sell_conditions = (df['BBP_20_2.0'] > 0.8) & (df['RSI_14'] > 60)
 
-    async def run(self, interval_seconds: int = 5):
-        """
-        박스권 그리드 트레이딩 전략을 실행합니다.
-        'ranging' 시장에서만 작동합니다.
-        """
-        print(f"Starting RangeGridTrader for {self.ticker}...")
-        while True:
-            try:
-                # 시장 분류
-                self.market_type = await classify_market_live(
-                    self.upbit_service.exchange, self.ticker
-                )  # Await call
-                print(
-                    f"[{asyncio.current_task()._coro.cr_frame.f_globals['time'].strftime('%Y-%m-%d %H:%M')}] Current market type for {self.ticker}: {self.market_type}"
-                )
+    # 3. 시그널 컬럼 추가
+    df['signal'] = 0.0
+    df.loc[buy_conditions, 'signal'] = 1.0
+    df.loc[sell_conditions, 'signal'] = -1.0
 
-                if self.market_type == "ranging":
-                    print(
-                        f"Market is ranging. Activating GridTrader logic for {self.ticker}..."
-                    )
+    # 4. 중복 신호 제거 (포지션 유지)
+    # 매수 후 다음 매도 신호가 나올 때까지 매수 신호는 무시
+    # 매도 후 다음 매수 신호가 나올 때까지 매도 신호는 무시
+    position = 0
+    signals = []
+    for i in range(len(df)):
+        if position == 0 and df['signal'].iloc[i] == 1:
+            position = 1
+            signals.append(1)
+        elif position == 1 and df['signal'].iloc[i] == -1:
+            position = -1
+            signals.append(-1)
+        elif position == -1 and df['signal'].iloc[i] == 1:
+            position = 1
+            signals.append(1)
+        else:
+            signals.append(0)
+    df['signal'] = signals
+    return df
 
-                    current_price = await self.upbit_service.get_current_price(
-                        self.ticker
-                    )
-                    if current_price is None:
-                        print(
-                            f"Could not fetch current price for {self.ticker}. Retrying..."
-                        )
-                        await asyncio.sleep(interval_seconds)
-                        continue
+async def run_range_grid_strategy():
+    """
+    실시간으로 시장 상황을 스캔하고, 'SIDEWAYS' 상태일 때
+    Range Grid Trading 전략을 실행하는 메인 비동기 함수.
+    """
+    print("🚀 Starting Range Grid Strategy...")
+    upbit_service = UpbitService()
+    grid_trader = GridTrader(upbit_service, symbol="BTC/KRW", num_grids=10, total_investment=50000)
 
-                    print(f"Current price for {self.ticker}: {current_price}")
-
-                    # Stop-loss check (GridTrader의 로직 재사용)
-                    if current_price <= self.stop_loss_price:
-                        print(
-                            f"🚨 손절매 발동! {self.ticker} 전량 시장가 매도 및 거래 중지."
-                        )
-                        await self.upbit_service.cancel_all_orders(self.ticker)
-                        base_currency = self.ticker.split("/")[0]
-                        balances = await self.upbit_service.get_balance()
-                        amount_to_sell = balances["coins"].get(base_currency, 0)
-                        if amount_to_sell > 0:
-                            await self.upbit_service.create_market_sell_order(
-                                self.ticker, amount_to_sell
-                            )
-                        else:
-                            print(f"Warning: No {base_currency} to sell for stop-loss.")
-                        return  # 프로그램 종료
-
-                    # 매수 그리드 확인 (GridTrader의 로직 재사용)
-                    for grid_price in self.grids:
-                        if (
-                            current_price <= grid_price
-                            and self.active_orders.get(grid_price) != "buy"
-                        ):
-                            print(
-                                f"Price {current_price} crossed BUY grid line at {grid_price}. Placing BUY order..."
-                            )
-                            order = await self._place_order("buy", grid_price)
-                            if order:
-                                self.active_orders[grid_price] = "buy"
-                            break
-
-                    # 매도 그리드 확인 (GridTrader의 로직 재사용)
-                    for grid_price in self.grids:
-                        if (
-                            current_price >= grid_price
-                            and self.active_orders.get(grid_price) != "sell"
-                        ):
-                            print(
-                                f"Price {current_price} crossed SELL grid line at {grid_price}. Placing SELL order..."
-                            )
-                            order = await self._place_order("sell", grid_price)
-                            if order:
-                                self.active_orders[grid_price] = "sell"
-                            break
-
-                else:
-                    print(
-                        f"Market is not ranging ({self.market_type}). Waiting for ranging market..."
-                    )
-
-            except Exception as e:
-                print(f"An error occurred in RangeGridTrader run loop: {e}")
-
-            await asyncio.sleep(interval_seconds)
-
-
-if __name__ == "__main__":
-    import os
-    from dotenv import load_dotenv
-    import asyncio
-
-    env_path = os.path.join(os.path.dirname(__file__), "..", "config", ".env")
-    if not os.path.exists(env_path):
-        with open(env_path, "w") as f:
-            f.write("""UPBIT_ACCESS_KEY=YOUR_ACCESS_KEY
-UPBIT_SECRET_KEY=YOUR_SECRET_KEY""")
-        print(
-            f"Created a dummy .env file at {env_path}. Please replace YOUR_ACCESS_KEY and YOUR_SECRET_KEY with actual values."
-        )
-    load_dotenv(env_path)
-
-    async def test_range_grid_trader():
-        # 이 부분은 실제 UpbitService 인스턴스와 연동하여 테스트해야 합니다.
+    while True:
         try:
-            upbit_service = UpbitService()
-            await upbit_service.connect()
+            # 실시간 시장 상황 분류
+            market_state = await classify_market_live(upbit_service)
+            print(f"[{pd.Timestamp.now()}] Current market state: {market_state}")
 
-            ticker = "BTC/KRW"
-            lower_price = 30000000.0
-            upper_price = 40000000.0
-            grid_count = 5
-            order_amount_krw = 10000.0
+            if market_state == "SIDEWAYS":
+                if not grid_trader.is_running:
+                    print("✅ Market is SIDEWAYS. Starting Grid Trader...")
+                    asyncio.create_task(grid_trader.run())
+                else:
+                    print("✅ Market is SIDEWAYS. Grid Trader is already running.")
+            else: # TRENDING or DOWNTREND
+                if grid_trader.is_running:
+                    print(f"❌ Market is {market_state}. Stopping Grid Trader...")
+                    await grid_trader.stop()
+                else:
+                    print(f"❌ Market is {market_state}. Grid Trader remains stopped.")
 
-            RangeGridTrader(
-                upbit_service,
-                ticker,
-                lower_price,
-                upper_price,
-                grid_count,
-                order_amount_krw,
-            )
-
-            print(
-                "RangeGridTrader example setup complete. To run, integrate into main.py and ensure API keys are set."
-            )
-            # await range_grid_trader.run(interval_seconds=10) # 실제 실행 시 주석 해제
+            # 30분마다 시장 상황 재확인
+            print("🕒 Waiting for 30 minutes before next market scan...")
+            await asyncio.sleep(1800)
 
         except Exception as e:
-            print(f"An unexpected error occurred during RangeGridTrader setup: {e}")
+            print(f"🔥 An error occurred in the main loop: {e}")
+            # 에러 발생 시 잠시 대기 후 재시도
+            await asyncio.sleep(60)
 
-    asyncio.run(test_range_grid_trader())
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_range_grid_strategy())
+    except KeyboardInterrupt:
+        print("\n⏹️ Strategy stopped by user.")

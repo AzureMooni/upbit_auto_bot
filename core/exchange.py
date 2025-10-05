@@ -160,6 +160,61 @@ class UpbitService:
             )
             return None
 
+    async def create_limit_buy_order(self, symbol: str, amount: float, price: float):
+        """
+        특정 심볼의 코인을 지정가로 매수합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        try:
+            order = await self.exchange.create_limit_buy_order(symbol, amount, price)
+            print(f"Placed LIMIT BUY order: {amount:.4f} {symbol.split('/')[0]} at {price:,.0f}. Order ID: {order['id']}")
+            return order
+        except Exception as e:
+            print(f"Error placing LIMIT BUY order for {symbol} amount {amount} at {price}: {e}")
+            return None
+
+    async def create_limit_sell_order(self, symbol: str, amount: float, price: float):
+        """
+        특정 심볼의 코인을 지정가로 매도합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        try:
+            order = await self.exchange.create_limit_sell_order(symbol, amount, price)
+            print(f"Placed LIMIT SELL order: {amount:.4f} {symbol.split('/')[0]} at {price:,.0f}. Order ID: {order['id']}")
+            return order
+        except Exception as e:
+            print(f"Error placing LIMIT SELL order for {symbol} amount {amount} at {price}: {e}")
+            return None
+
+    async def fetch_order(self, order_id: str, symbol: str):
+        """
+        특정 주문의 상태를 조회합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        try:
+            order = await self.exchange.fetch_order(order_id, symbol)
+            return order
+        except Exception as e:
+            print(f"Error fetching order {order_id} for {symbol}: {e}")
+            return None
+
+    async def cancel_order(self, order_id: str, symbol: str):
+        """
+        특정 주문을 취소합니다.
+        """
+        if not self.exchange:
+            raise ConnectionError("Exchange not connected. Call connect() first.")
+        try:
+            await self.exchange.cancel_order(order_id, symbol)
+            print(f"Cancelled order {order_id} for {symbol}.")
+            return True
+        except Exception as e:
+            print(f"Error cancelling order {order_id} for {symbol}: {e}")
+            return False
+
     async def fetch_latest_ohlcv(self, ticker: str, timeframe: str, limit: int = 1):
         """
         Fetches the latest OHLCV data for a given ticker and timeframe.

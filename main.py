@@ -1,3 +1,8 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress TensorFlow logging (1=INFO, 2=WARNING, 3=ERROR)
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0' # Disable oneDNN custom operations
+os.environ['OMP_NUM_THREADS'] = '1' # Limit OpenMP threads
+
 import argparse
 import asyncio
 from dotenv import load_dotenv
@@ -19,7 +24,7 @@ async def main():
         "--mode",
         type=str,
         required=True,
-        choices=["download", "preprocess", "train", "trade", "backtest", "train-rl"],
+        choices=["download", "preprocess", "train", "trade", "backtest", "train-rl", "validate", "simulate-commander"],
         help="""
         Operation mode:
         - 'download': Download 1-minute OHLCV data.
@@ -28,6 +33,8 @@ async def main():
         - 'trade': Start the high-frequency scalping live trader.
         - 'backtest': Run a simulation of the scalping strategy.
         - 'train-rl': Train the Reinforcement Learning agent.
+        - 'validate': Validate a single model's performance.
+        - 'simulate-commander': Run the full AI Commander strategy simulation.
         """,
     )
     # General arguments
@@ -52,6 +59,8 @@ async def main():
         default=50000,
         help="Initial capital for trading or backtesting.",
     )
+    parser.add_argument("--model-path", type=str, help="Path to the model file for validation.")
+    parser.add_argument("--output-path", type=str, help="Path to save the validation results JSON.")
 
     args = parser.parse_args()
 
@@ -97,6 +106,28 @@ async def main():
         # This can be made configurable with another argparse argument if needed.
         rl_trainer = RLModelTrainer()
         rl_trainer.train_agent(total_timesteps=100000, ticker="BTC/KRW")
+    
+    elif args.mode == "validate":
+        print(f"🔍 Validating model: {args.model_path}...")
+        from portfolio_backtester import PortfolioBacktester
+        validator = PortfolioBacktester(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            model_path=args.model_path,
+            output_path=args.output_path,
+            initial_capital=args.capital
+        )
+        validator.run_single_model_validation()
+
+    elif args.mode == "simulate-commander":
+        print("🚀 Running AI Commander simulation...")
+        from portfolio_backtester import PortfolioBacktester
+        commander_sim = PortfolioBacktester(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            initial_capital=args.capital
+        )
+        commander_sim.run_commander_simulation()
 
 
 if __name__ == "__main__":

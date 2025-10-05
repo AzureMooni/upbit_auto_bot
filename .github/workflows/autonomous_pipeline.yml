@@ -1,0 +1,163 @@
+# .github/workflows/autonomous_pipeline.yml
+
+name: Autonomous Agent Growth Pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 18 * * 6' # 18:00 UTC on Saturday (3 AM KST on Sunday)
+
+jobs:
+  # LINTING JOB: A quick check before starting heavy training
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install linter
+        run: pip install ruff
+      - name: Run linter
+        run: ruff check .
+
+  # TRAINING JOB: Trains a new agent
+  train-new-agent:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Train Foundational & Specialist Agents
+        run: |
+          python -c "from foundational_model_trainer import train_foundational_agent; train_foundational_agent(total_timesteps=150000)"
+          python -c "from specialist_trainer import train_specialists; train_specialists(total_timesteps_per_specialist=50000)"
+      - name: Rename and Package New Agents
+        run: |
+          mv bullish_market_agent.zip bullish_agent_new.zip
+          mv bearish_market_agent.zip bearish_agent_new.zip
+          mv sideways_market_agent.zip sideways_agent_new.zip
+      - name: Upload New Agent Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-specialist-agents
+          path: |
+            bullish_agent_new.zip
+            bearish_agent_new.zip
+            sideways_agent_new.zip
+
+  # VALIDATION JOB: Compares the new agent with the live one
+  validate-new-agent:
+    runs-on: ubuntu-latest
+    needs: train-new-agent
+    outputs:
+      is_better: ${{ steps.comparison.outputs.is_better }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Download New Agent Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: new-specialist-agents
+      - name: Download Live Agent Artifacts
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: autonomous_pipeline.yml
+          workflow_conclusion: success
+          name: live-specialist-agents
+          path: .
+        continue-on-error: true # First run will not have a live agent
+
+      - name: Run Backtest for New Agent
+        run: python main.py --mode validate --model-path bullish_agent_new.zip --output-path new_results.json --start-date $(date -d '3 months ago' +%Y-%m-%d) --end-date $(date +%Y-%m-%d)
+      
+      - name: Run Backtest for Live Agent
+        run: python main.py --mode validate --model-path bullish_agent_live.zip --output-path live_results.json --start-date $(date -d '3 months ago' +%Y-%m-%d) --end-date $(date +%Y-%m-%d)
+        continue-on-error: true # First run will not have a live agent
+
+      - name: Compare Agent Performance
+        id: comparison
+        run: |
+          if [ ! -f live_results.json ]; then
+            echo "기존 모델이 없어, 새 모델을 무조건 배포합니다."
+            echo "is_better=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          NEW_SHARPE=$(jq '.sharpe_ratio' new_results.json)
+          LIVE_SHARPE=$(jq '.sharpe_ratio' live_results.json)
+          echo "New Agent Sharpe Ratio: $NEW_SHARPE"
+          echo "Live Agent Sharpe Ratio: $LIVE_SHARPE"
+          if (( $(echo "$NEW_SHARPE > $LIVE_SHARPE" | bc -l) )); then
+            echo "새 모델의 성능이 더 좋습니다. 배포를 진행합니다."
+            echo "is_better=true" >> $GITHUB_OUTPUT
+          else
+            echo "새 모델의 성능이 개선되지 않아 배포를 중단합니다."
+            echo "is_better=false" >> $GITHUB_OUTPUT
+          fi
+
+  # DEPLOY JOB: Deploys the validated new agent
+  deploy-new-agent:
+    runs-on: ubuntu-latest
+    needs: validate-new-agent
+    if: needs.validate-new-agent.outputs.is_better == 'true'
+    steps:
+      - name: Download validated new agents
+        uses: actions/download-artifact@v4
+        with:
+          name: new-specialist-agents
+      - name: Rename agents for deployment
+        run: |
+          mv bullish_agent_new.zip bullish_market_agent.zip
+          mv bearish_agent_new.zip bearish_market_agent.zip
+          mv sideways_agent_new.zip sideways_market_agent.zip
+      - name: Upload as Live Artifacts for next run
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-specialist-agents
+          path: |
+            bullish_market_agent.zip
+            bearish_market_agent.zip
+            sideways_market_agent.zip
+      - name: Transfer to EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          source: "*_market_agent.zip"
+          target: "/home/ec2-user/"
+      - name: Trigger EC2 Deployment
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          script: |
+            # This script on the EC2 would restart the docker container
+            # For simplicity, we assume there is a script that handles the blue-green logic
+            echo "Deployment trigger sent to EC2."
+            # Example: /home/ec2-user/scripts/deploy.sh

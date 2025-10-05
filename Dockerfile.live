@@ -1,0 +1,26 @@
+# Dockerfile for the lightweight live trading environment
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Create a non-root user for security
+RUN useradd --create-home appuser
+
+# Install only runtime dependencies
+COPY runtime-requirements.txt .
+RUN pip install --no-cache-dir -r runtime-requirements.txt
+
+# Copy necessary source code for live trading
+COPY main.py .
+COPY live_trader.py .
+COPY preprocessor.py . # Needed by live_trader
+COPY core/ ./core/
+
+# The model will be mounted as a volume, not copied.
+
+# Set user and environment
+USER appuser
+
+# Default command to start the live trader
+CMD ["python", "live_trader.py"]

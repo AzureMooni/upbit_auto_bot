@@ -107,11 +107,8 @@ class AdvancedBacktester:
 
         trades = []
         capital = self.initial_capital
-        last_exit_time = pd.Timestamp.min
 
         for index, row in buy_signals.iterrows():
-            if index < last_exit_time:
-                continue
 
             capital_for_trade = capital * 0.5
             if capital_for_trade < 5000:
@@ -161,7 +158,7 @@ class AdvancedBacktester:
                         "pnl": pnl,
                     }
                 )
-                last_exit_time = exit_time
+
 
         # 3. 최종 리포트 생성
         self._generate_report(trades, capital)

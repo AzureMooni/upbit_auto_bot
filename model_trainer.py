@@ -30,13 +30,9 @@ class ModelTrainer:
         df["future_high"] = (
             df["high"].shift(-look_forward_mins).rolling(window=look_forward_mins).max()
         )
-        df["future_low"] = (
-            df["low"].shift(-look_forward_mins).rolling(window=look_forward_mins).min()
-        )
 
         df["label"] = 0  # 관망
         df.loc[df["future_high"] >= df["close"] * (1 + threshold), "label"] = 1  # 매수
-        df.loc[df["future_low"] <= df["close"] * (1 - threshold), "label"] = 2  # 매도
 
         return df.dropna()
 
@@ -94,7 +90,7 @@ class ModelTrainer:
         # 4. XGBoost 모델 훈련
         self.model = xgb.XGBClassifier(
             objective="multi:softmax",
-            num_class=3,
+            num_class=2,
             eval_metric="mlogloss",
             use_label_encoder=False,
             n_estimators=200,
@@ -114,7 +110,7 @@ class ModelTrainer:
         print(f"\n[모델 평가] 테스트 정확도: {accuracy:.4f}")
         print(
             classification_report(
-                y_test, y_pred, target_names=["Hold(0)", "Buy(1)", "Sell(2)"]
+                y_test, y_pred, target_names=["Hold(0)", "Buy(1)"]
             )
         )
 
