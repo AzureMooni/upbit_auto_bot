@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import argparse
 
 # --- 의존성 임포트 ---
 from market_regime_detector import precompute_regime_indicators, get_regime_from_indicators
@@ -239,8 +240,6 @@ class CommanderBacktester:
         # CI/CD를 위한 머신 리더블 출력
         print(f"FINAL_SHARPE={sharpe_ratio}")
 
-
-import argparse
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
