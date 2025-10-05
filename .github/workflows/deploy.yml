@@ -201,6 +201,11 @@ jobs:
           username: ec2-user
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
           script: |
+            set -e
+
+            echo "### Pruning Docker system ###"
+            docker system prune -a -f
+
             # Set container names and image name
             CONTAINER_NAME="upbit-auto-bot-container"
             OLD_CONTAINER_NAME="upbit-auto-bot-container-old"
