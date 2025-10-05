@@ -1,6 +1,6 @@
 
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta as ta  # noqa: F401
 
 def precompute_regime_indicators(df: pd.DataFrame, adx_len=14, atr_len=14, natr_ma_len=90) -> pd.DataFrame:
     """

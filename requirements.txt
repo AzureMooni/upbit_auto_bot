@@ -4,3 +4,4 @@ git+https://github.com/aarigs/pandas-ta.git
 ccxt
 python-dotenv
 pyarrow
+stable-baselines3
