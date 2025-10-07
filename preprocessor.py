@@ -1,72 +1,61 @@
 import pandas as pd
-import pandas_ta as ta  # noqa: F401
 import os
+from market_regime_detector import precompute_regime_indicators, get_regime_from_indicators
+from strategies.trend_follower import generate_v_recovery_signals
+from strategies.mean_reversion_strategy import generate_sideways_signals
 
-# 고빈도 스캘핑을 위한 타겟 코인 목록
-SCALPING_TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW"]
-
-
-class DataPreprocessor:
+def preprocess_data(file_path: str, output_path: str):
     """
-    고빈도 거래를 위한 데이터 전처리기.
-    1분봉 데이터를 읽어, 스캘핑에 필요한 최소한의 기술적 지표를 계산하고 캐시를 생성합니다.
+    RL 훈련을 위해 모든 지표와 시장 체제를 계산하여 전처리된 데이터를 생성합니다.
     """
+    print(f"데이터를 로드합니다: {file_path}")
+    if not os.path.exists(file_path):
+        print(f"오류: 데이터 파일이 없습니다 - {file_path}")
+        return
 
-    def __init__(self, target_coins: list = None):
-        self.target_coins = target_coins if target_coins else SCALPING_TARGET_COINS
-        self.data_dir = "data"
-        self.cache_dir = "cache"
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir)
+    df = pd.read_feather(file_path).set_index("timestamp")
+    
+    print("모든 기술적 지표와 시장 체제를 계산합니다...")
+    # 1. 시장 체제 분석에 필요한 모든 지표 계산
+    df_processed = precompute_regime_indicators(df)
 
-    @staticmethod
-    def generate_features(df: pd.DataFrame) -> pd.DataFrame:
-        """스캘핑에 필요한 핵심 기술적 지표(feature)를 계산합니다."""
-        df.ta.rsi(length=14, append=True)
-        df.ta.bbands(length=20, std=2, append=True)
-        df.ta.macd(fast=12, slow=26, signal=9, append=True)
-        return df
+    # 2. V-회복 및 횡보장 전략 신호에 필요한 지표 추가 계산
+    df_processed = generate_v_recovery_signals(df_processed)
+    df_processed = generate_sideways_signals(df_processed)
 
-    def run(self):
-        """전체 전처리 파이프라인을 실행합니다."""
-        print("🚀 [Scalping] 1분봉 데이터 전처리 및 캐시 생성을 시작합니다...")
+    # 3. 시장 체제 자체를 피처로 추가 (숫자로 변환)
+    regime_map = {name: i for i, name in enumerate(df_processed.apply(
+        lambda row: get_regime_from_indicators(
+            close=row['close'], ema_20=row['EMA_20'], ema_50=row['EMA_50'], adx=row['ADX'],
+            normalized_atr=row['Normalized_ATR'], natr_ma=row['Normalized_ATR_MA']
+        ), axis=1).unique())}
+    
+    df_processed['regime'] = df_processed.apply(
+        lambda row: regime_map.get(get_regime_from_indicators(
+            close=row['close'], ema_20=row['EMA_20'], ema_50=row['EMA_50'], adx=row['ADX'],
+            normalized_atr=row['Normalized_ATR'], natr_ma=row['Normalized_ATR_MA']
+        )), axis=1)
 
-        for ticker in self.target_coins:
-            print(f"- {ticker} 데이터를 처리합니다...")
-            df_raw = self._load_raw_data(ticker)
-            if df_raw is None or df_raw.empty:
-                continue
+    # 4. RL 환경에 필요한 최종 피처 선택
+    # OHLCV (5) + ADX, Norm_ATR, BBP, EMA_20, EMA_50, RSI, MACD_hist, regime (8) = 13 features
+    final_features = [
+        'open', 'high', 'low', 'close', 'volume',
+        'ADX', 'Normalized_ATR', 'BBP', 'EMA_20', 'EMA_50',
+        'RSI_14', 'MACD_hist', 'regime'
+    ]
+    df_final = df_processed[final_features].dropna()
 
-            # 기술적 지표 생성
-            df_featured = DataPreprocessor.generate_features(df_raw)
+    print(f"전처리가 완료되었습니다. {len(df_final)}개의 데이터 포인트를 저장합니다.")
+    df_final.to_pickle(output_path)
+    print(f"전처리된 데이터가 다음 경로에 저장되었습니다: {output_path}")
 
-            # BTC 시장 체제 병합
-            df_featured.dropna(inplace=True)
+if __name__ == '__main__':
+    # 데이터 캐시 디렉토리 확인 및 생성
+    cache_dir = 'cache'
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
 
-            cache_path = os.path.join(
-                self.cache_dir, f"{ticker.replace('/', '_')}_1m.feather"
-            )
-            df_featured.reset_index().to_feather(cache_path)
-            print(
-                f"  -> {ticker}의 전처리된 데이터 {len(df_featured)}개를 '{cache_path}'에 저장했습니다."
-            )
-
-        print("✅ 모든 데이터 처리가 완료되었습니다.")
-
-    def _load_raw_data(self, ticker: str, timeframe: str = "1m") -> pd.DataFrame | None:
-        """data 폴더에서 원본 CSV 파일을 로드합니다."""
-        file_path = os.path.join(
-            self.data_dir, f"{ticker.replace('/', '_')}_{timeframe}.csv"
-        )
-        if not os.path.exists(file_path):
-            print(f"  경고: {file_path}를 찾을 수 없습니다.")
-            return None
-
-        df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
-        df.columns = [col.lower() for col in df.columns]
-        return df
-
-
-if __name__ == "__main__":
-    preprocessor = DataPreprocessor()
-    preprocessor.run()
+    preprocess_data(
+        file_path=os.path.join(cache_dir, 'BTC_KRW_1h.feather'),
+        output_path=os.path.join(cache_dir, 'preprocessed_data.pkl')
+    )

@@ -1,132 +1,135 @@
-import gymnasium as gym
+
 import numpy as np
 import pandas as pd
-from gymnasium.spaces import Box, Discrete
-
+import gymnasium as gym
+from gymnasium import spaces
+from collections import deque
 
 class TradingEnv(gym.Env):
     """
-    강화학습 에이전트를 위한 가상 거래 환경
+    강화학습 에이전트를 위한 커스텀 암호화폐 거래 환경.
+    상세 거래 기록 로깅 기능이 추가되었습니다.
     """
-
     metadata = {"render_modes": ["human"]}
 
-    def __init__(self, df: pd.DataFrame, initial_capital=1_000_000, window_size=60):
-        super().__init__()
+    def __init__(self, df, symbol="KRW-BTC", lookback_window=50, initial_capital=1_000_000, transaction_cost=0.0005):
+        super(TradingEnv, self).__init__()
 
         self.df = df
+        self.symbol = symbol
+        self.lookback_window = lookback_window
         self.initial_capital = initial_capital
-        self.window_size = window_size
+        self.transaction_cost = transaction_cost
 
-        # Action Space: 0: Hold, 1: Buy, 2: Sell
-        self.action_space = Discrete(3)
-
-        # Observation Space: [cash, asset_holdings] + window_size * num_features
-        # cash: 현재 현금
-        # asset_holdings: 현재 보유 자산 가치
-        # num_features: OHLCV + 기술적 지표 수
-        self.observation_space = Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(2 + window_size * len(self.df.columns),),
-            dtype=np.float32,
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(lookback_window, 13), dtype=np.float32
         )
-
-        self.current_step = 0
-        self.cash = initial_capital
-        self.asset_holdings = 0.0  # 보유 코인 수량
-        self.total_asset = initial_capital
-        self.start_step = window_size
-
-    def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
-        self.current_step = self.start_step
-        self.cash = self.initial_capital
-        self.asset_holdings = 0.0
-        self.total_asset = self.initial_capital
-
-        obs = self._get_obs()
-        info = self._get_info()
-
-        return obs, info
-
-    def step(self, action):
-        self.current_step += 1
-
-        # 현재 가격
-        current_price = self.df.loc[self.df.index[self.current_step], "close"]
-
-        # 이전 스텝의 총 자산
-        prev_total_asset = self.total_asset
-
-        # 행동 수행
-        self._take_action(action, current_price)
-
-        # 현재 총 자산 계산
-        self.total_asset = self.cash + self.asset_holdings * current_price
-
-        # 보상 계산
-        reward = self.total_asset - prev_total_asset
-
-        # 거래 미체결 시 작은 페널티
-        if action == 0:  # Hold
-            reward -= self.initial_capital * 0.00001
-
-        # 종료 조건 확인
-        terminated = self.current_step >= len(self.df) - 1
-        truncated = False  # 시간 제한으로 인한 종료는 사용하지 않음
-
-        obs = self._get_obs()
-        info = self._get_info()
-
-        return obs, reward, terminated, truncated, info
-
-    def _take_action(self, action, current_price):
-        # action: 0: Hold, 1: Buy, 2: Sell
-        if action == 1:  # Buy
-            # 현금의 10% 만큼 매수
-            buy_amount = self.cash * 0.1
-            if self.cash > buy_amount:
-                self.asset_holdings += buy_amount / current_price
-                self.cash -= buy_amount
-        elif action == 2:  # Sell
-            # 보유 자산의 10% 만큼 매도
-            sell_amount = self.asset_holdings * 0.1
-            if self.asset_holdings > sell_amount:
-                self.cash += sell_amount * current_price
-                self.asset_holdings -= sell_amount
-
-    def _get_obs(self):
-        # 현재 스텝의 관측 데이터
-        obs_df = self.df.iloc[self.current_step - self.window_size : self.current_step]
-
-        # 정규화 (가격 기반 지표들은 첫번째 close 값으로, 나머지는 그대로)
-        # 간단한 구현을 위해 여기서는 정규화를 생략하고, 실제 훈련 시 데이터 전처리 단계에서 수행하는 것을 권장
-        obs_values = obs_df.values.flatten()
-
-        # 포트폴리오 상태 추가
-        portfolio_state = np.array(
-            [
-                self.cash,
-                self.asset_holdings
-                * self.df.loc[self.df.index[self.current_step], "close"],
-            ],
-            dtype=np.float32,
-        )
-
-        return np.concatenate([portfolio_state, obs_values]).astype(np.float32)
+        self.action_space = spaces.Discrete(3)
+        
+        self.INACTIVITY_THRESHOLD = 12
+        self.INACTIVITY_PENALTY = -0.01
+        self.PROFIT_BONUS_FACTOR = 0.5
+        self.TARGET_SORTINO = 1.5
+        self.SORTINO_BONUS = 10.0
+        
+    def _get_observation(self):
+        obs = self.df.iloc[self.current_step - self.lookback_window + 1 : self.current_step + 1]
+        return obs.values
 
     def _get_info(self):
         return {
-            "total_asset": self.total_asset,
+            "step": self.current_step,
+            "portfolio_value": self.portfolio_value,
             "cash": self.cash,
-            "asset_holdings": self.asset_holdings,
-            "current_price": self.df.loc[self.df.index[self.current_step], "close"],
+            "holdings_value": self.holdings * self.df.iloc[self.current_step]["close"],
+            "entry_price": self.entry_price
         }
 
-    def render(self, mode="human", close=False):
-        if mode == "human":
-            info = self._get_info()
-            print(
-                f"Step: {self.current_step}, Total Asset: {info['total_asset']:.2f}, Cash: {info['cash']:.2f}, Holdings: {info['asset_holdings']:.6f}"
-            )
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.current_step = self.lookback_window - 1
+        self.cash = self.initial_capital
+        self.holdings = 0
+        self.portfolio_value = self.initial_capital
+        self.entry_price = 0
+        self.consecutive_holds = 0
+        self.episode_trade_returns = []
+
+        return self._get_observation(), self._get_info()
+
+    def _execute_trade(self, action):
+        trade_log = None
+        trade_return = 0.0
+
+        current_price = self.df.iloc[self.current_step]["close"]
+        timestamp = self.df.index[self.current_step]
+
+        if action == 1: # 매수
+            if self.cash > 0:
+                amount_to_buy_krw = self.cash * (1 - self.transaction_cost)
+                self.holdings = amount_to_buy_krw / current_price
+                self.cash = 0
+                self.entry_price = current_price
+                trade_log = {
+                    'timestamp': timestamp, 'action': 'BUY', 'price': current_price, 'amount': self.holdings
+                }
+        
+        elif action == 2: # 매도
+            if self.holdings > 0:
+                sell_value = self.holdings * current_price * (1 - self.transaction_cost)
+                if self.entry_price > 0:
+                    trade_return = (current_price - self.entry_price) / self.entry_price
+                
+                trade_log = {
+                    'timestamp': timestamp, 'action': 'SELL', 'price': current_price, 'amount': self.holdings
+                }
+                self.cash = sell_value
+                self.holdings = 0
+                self.entry_price = 0
+                if trade_return != 0.0:
+                    self.episode_trade_returns.append(trade_return)
+
+        return trade_return, trade_log
+
+    def _calculate_reward(self, portfolio_return: float, action: int, trade_return: float) -> float:
+        reward = portfolio_return
+        if action == 0:
+            self.consecutive_holds += 1
+        else:
+            self.consecutive_holds = 0
+        if self.consecutive_holds > self.INACTIVITY_THRESHOLD:
+            reward += self.INACTIVITY_PENALTY
+        if trade_return > 0:
+            reward += self.PROFIT_BONUS_FACTOR * trade_return
+        return reward
+
+    def step(self, action):
+        self.current_step += 1
+        done = self.current_step >= len(self.df) - 1
+
+        portfolio_value_before_trade = self.portfolio_value
+        trade_return, trade_log = self._execute_trade(action)
+
+        current_price = self.df.iloc[self.current_step]["close"]
+        self.portfolio_value = self.cash + self.holdings * current_price
+        
+        portfolio_return = (self.portfolio_value / portfolio_value_before_trade) - 1 if portfolio_value_before_trade > 0 else 0.0
+        reward = self._calculate_reward(portfolio_return, action, trade_return)
+
+        if done:
+            returns = self.episode_trade_returns
+            if len(returns) > 1:
+                downside_returns = [r for r in returns if r < 0]
+                downside_deviation = np.std(downside_returns) if len(downside_returns) > 1 else 0
+                mean_return = np.mean(returns)
+                if downside_deviation > 1e-6:
+                    sortino_ratio = mean_return / downside_deviation
+                    if sortino_ratio > self.TARGET_SORTINO:
+                        reward += self.SORTINO_BONUS
+
+        observation = self._get_observation()
+        info = self._get_info()
+        if trade_log:
+            info['trade'] = trade_log
+
+        return observation, reward, done, False, info

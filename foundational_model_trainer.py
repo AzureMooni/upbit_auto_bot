@@ -1,57 +1,53 @@
 import pandas as pd
-import numpy as np
-from stable_baselines3 import PPO
 import os
-from trading_env_simple import SimpleTradingEnv
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from gymnasium.wrappers import FlattenObservation
 
+from rl_environment import TradingEnv
 
-def train_foundational_agent(
-    ticker="BTC/KRW",
-    model_save_path="foundational_agent.zip",
-    total_timesteps=200000,
-    start_date=None,
-    end_date=None,
-):
+# --- Constants ---
+LOOKBACK_WINDOW = 50
+DATA_PATH = "cache/preprocessed_data.pkl"
+LOG_DIR = "foundational_rl_tensorboard_logs/"
+MODEL_SAVE_PATH = "foundational_agent.zip"
+
+def train_foundational_agent(total_timesteps=100000):
     """
-    마스터 AI (Foundational Agent)를 훈련시키는 함수.
-    전처리된 캐시 데이터를 사용합니다.
+    Trains the foundational PPO agent on the preprocessed data.
     """
     print("전처리된 캐시 데이터를 불러옵니다...")
-    cache_path = f"cache/{ticker.replace('/', '_')}_1h.feather"
-    if not os.path.exists(cache_path):
-        print(f"오류: 캐시 파일 '{cache_path}'를 찾을 수 없습니다.")
-        print("먼저 --mode preprocess를 실행하여 캐시를 생성해주세요.")
-        return
-
-    df = pd.read_feather(cache_path)
-    df.set_index("timestamp", inplace=True)
-
-    if start_date and end_date:
-        df = df[(df.index >= start_date) & (df.index <= end_date)]
-        print(
-            f"훈련 데이터를 {start_date}부터 {end_date}까지로 필터링합니다. ({len(df)}개 데이터)"
-        )
-
-    # 환경에 필요한 숫자형 데이터만 전달 (regime 등 문자열 컬럼 제외)
-    env_df = df.select_dtypes(include=np.number)
+    df = pd.read_pickle(DATA_PATH)
 
     print("거래 환경을 설정합니다...")
-    env = SimpleTradingEnv(env_df)
+    env = TradingEnv(df, lookback_window=LOOKBACK_WINDOW)
+    env = FlattenObservation(env)
+    vec_env = DummyVecEnv([lambda: env])
 
     print("PPO 모델을 설정하고 훈련을 시작합니다...")
     model = PPO(
         "MlpPolicy",
-        env,
+        vec_env,
         verbose=1,
-        tensorboard_log="./foundational_rl_tensorboard_logs/",
+        tensorboard_log=LOG_DIR,  # This automatically handles TensorBoard logging
+        n_steps=2048,
+        batch_size=64,
+        n_epochs=10,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.0,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
     )
+
+    print("모델 훈련을 시작합니다... (최종 수정)")
+    # The `callback` argument is removed as it's handled by `tensorboard_log`
     model.learn(total_timesteps=total_timesteps)
 
-    print(f"훈련된 마스터 AI 모델을 '{model_save_path}'에 저장합니다.")
-    model.save(model_save_path)
-
+    print(f"훈련이 완료되었습니다. 모델을 다음 경로에 저장합니다: {MODEL_SAVE_PATH}")
+    model.save(MODEL_SAVE_PATH)
 
 if __name__ == "__main__":
-    import numpy as np  # select_dtypes를 위해 추가
-
-    train_foundational_agent()
+    os.makedirs(LOG_DIR, exist_ok=True)
+    train_foundational_agent(total_timesteps=150000)

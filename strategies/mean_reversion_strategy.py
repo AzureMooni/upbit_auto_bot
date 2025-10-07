@@ -4,55 +4,39 @@ import pandas as pd
 def generate_sideways_signals(df: pd.DataFrame, bband_length=20, rsi_length=14, bband_std=2.0):
     """
     Generates trading signals for a mean-reversion strategy in sideways markets.
-
-    Args:
-        df (pd.DataFrame): DataFrame with OHLCV data.
-        bband_length (int): The lookback period for Bollinger Bands.
-        rsi_length (int): The lookback period for RSI.
-        bband_std (float): The number of standard deviations for Bollinger Bands.
-
-    Returns:
-        pd.DataFrame: The original DataFrame with 'signal' and 'confidence' columns added.
+    This version manually calculates indicators to avoid pandas-ta accessor issues.
     """
-    # Calculate Bollinger Bands and get the %B indicator
-    bbands = df.ta.bbands(length=bband_length, std=bband_std)
-    # Columns are named like BBL_20_2.0, BBM_20_2.0, BBU_20_2.0, BBB_20_2.0, BBP_20_2.0
-    bpercent_col = f'BBP_{bband_length}_{bband_std}'
-    df['BBP'] = bbands[bpercent_col]
+    df_copy = df.copy()
 
-    # Calculate RSI
-    df['RSI'] = df.ta.rsi(length=rsi_length)
+    # --- Manual Indicator Calculations ---
+    # 1. Bollinger Bands
+    mid_band = df_copy['close'].rolling(window=bband_length).mean()
+    std_dev = df_copy['close'].rolling(window=bband_length).std()
+    upper_band = mid_band + (std_dev * bband_std)
+    lower_band = mid_band - (std_dev * bband_std)
+    
+    # Calculate %B (BBP)
+    df_copy['BBP'] = (df_copy['close'] - lower_band) / (upper_band - lower_band)
+
+    # 2. RSI
+    delta = df_copy['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=rsi_length).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_length).mean()
+    rs = gain / loss
+    df_copy['RSI_14'] = 100 - (100 / (1 + rs))
+    # --- End of Manual Calculations ---
 
     # Generate signals based on %B and RSI
-    # Buy when oversold: %B is low and RSI is low
-    buy_conditions = (df['BBP'] < 0.1) & (df['RSI'] < 30)
-    # Sell when overbought: %B is high and RSI is high
-    sell_conditions = (df['BBP'] > 0.9) & (df['RSI'] > 70)
+    buy_conditions = (df_copy['BBP'] < 0.1) & (df_copy['RSI_14'] < 30)
+    sell_conditions = (df_copy['BBP'] > 0.9) & (df_copy['RSI_14'] > 70)
 
     # Create the signal column
-    df['signal'] = 0.0
-    df.loc[buy_conditions, 'signal'] = 1.0  # Buy signal
-    df.loc[sell_conditions, 'signal'] = -1.0 # Sell signal
+    df_copy['signal'] = 0.0
+    df_copy.loc[buy_conditions, 'signal'] = 1.0
+    df_copy.loc[sell_conditions, 'signal'] = -1.0
 
     # Set confidence for valid signals
-    df['confidence'] = 0.0
-    df.loc[buy_conditions | sell_conditions, 'confidence'] = 0.8
+    df_copy['confidence'] = 0.0
+    df_copy.loc[buy_conditions | sell_conditions, 'confidence'] = 0.8
 
-    return df
-
-# Example Usage:
-if __name__ == '__main__':
-    # Create a sample DataFrame (replace with your actual data)
-    data = {
-        'open': [100, 102, 101, 99, 98, 100, 103, 105, 104, 102] * 3,
-        'high': [103, 104, 102, 100, 99, 102, 105, 106, 105, 103] * 3,
-        'low': [99, 101, 100, 98, 97, 99, 102, 104, 103, 101] * 3,
-        'close': [101, 103, 100, 98, 99, 101, 104, 105, 102, 101] * 3,
-        'volume': [1000] * 30
-    }
-    df = pd.DataFrame(data)
-    df.index = pd.to_datetime(pd.date_range(start='2023-01-01', periods=30))
-
-    signals_df = generate_sideways_signals(df.copy())
-    print("DataFrame with Sideways Signals:")
-    print(signals_df.tail(10))
+    return df_copy

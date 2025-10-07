@@ -6,7 +6,7 @@ import argparse
 # --- 의존성 임포트 ---
 from market_regime_detector import precompute_regime_indicators, get_regime_from_indicators
 from risk_manager import get_position_size_ratio
-from strategies.trend_follower import generate_trend_signals
+from strategies.trend_follower import generate_v_recovery_signals
 
 
 class CommanderBacktester:
@@ -23,9 +23,9 @@ class CommanderBacktester:
         self.precompute_indicators = precompute_regime_indicators
         self.get_regime = get_regime_from_indicators
         self.get_size_ratio = get_position_size_ratio
-        self.generate_trend_signals = generate_trend_signals
+        self.generate_v_recovery_signals = generate_v_recovery_signals
         
-        print("✅ AI 총사령관 백테스팅 시스템 초기화 (추세 전략 추가).")
+        print("✅ AI 총사령관 백테스팅 시스템 초기화 (V-Recovery 전략 탑재).")
 
     def _simulate_scalping_squad_pnl(
         self, capital_for_day: float, intraday_data: pd.DataFrame
@@ -91,7 +91,9 @@ class CommanderBacktester:
         # 2. 모든 지표 및 신호 일괄 계산
         print("  - 모든 거시 지표 및 신호를 사전 계산 중...")
         df_indicators = self.precompute_indicators(df_btc_daily)
-        df_indicators = self.generate_trend_signals(df_indicators)
+        df_indicators = self.generate_v_recovery_signals(df_indicators)
+        df_indicators.rename(columns={'signal': 'v_recovery_signal'}, inplace=True)
+        # [NEW] 하락장 방어 로직을 위한 200일 이동평균선 추가
         df_indicators['SMA_200'] = df_indicators['close'].rolling(window=200, min_periods=100).mean()
         df_indicators.dropna(inplace=True)
         print("  - 지표 및 신호 계산 완료.")
@@ -99,12 +101,11 @@ class CommanderBacktester:
         # 3. 시뮬레이션 상태 변수 초기화
         cash = self.initial_capital
         holdings = 0.0
+        trend_position_active = False
         portfolio_history = []
         total_trades = 0
         benchmark_value = self.initial_capital
         
-        # 추세 추종 전략 상태 변수
-        trend_position_active = False
         # Trailing Stop Logic Start
         peak_price_since_entry = 0
         trailing_stop_price = 0
@@ -121,30 +122,27 @@ class CommanderBacktester:
             # 하락장 방어 로직
             is_bear_market = current_price < row['SMA_200']
             if is_bear_market:
-                if trend_position_active: # 하락장 진입 시, 보유 중인 추세 포지션 즉시 청산
+                if trend_position_active:
                     sell_value = holdings * current_price
                     cash += sell_value
                     holdings = 0
                     trend_position_active = False
                     total_trades += 1
                 
-                # 포트폴리오 기록 후, 당일 모든 거래 활동 중지
                 portfolio_history.append({"date": today, "portfolio_value": portfolio_value})
                 market_return = row["daily_return"]
                 if not pd.isna(market_return):
                     benchmark_value *= (1 + market_return)
-                continue # 다음 날로 넘어감
+                continue
 
-            # Trailing Stop Logic Start
             if trend_position_active:
-                # 보유 중일 때, 매일 고점을 기준으로 피크 가격 업데이트
                 peak_price_since_entry = max(peak_price_since_entry, row['high'])
-                # 트레일링 스톱 가격 업데이트
                 trailing_stop_price = peak_price_since_entry * (1 - trailing_stop_pct)
-            # Trailing Stop Logic End
 
-            # 시장 체제 기반 거래 로직
             current_regime = self.get_regime(
+                close=current_price,
+                ema_20=row['EMA_20'],
+                ema_50=row['EMA_50'],
                 adx=row['ADX'],
                 normalized_atr=row['Normalized_ATR'],
                 natr_ma=row['Normalized_ATR_MA']
@@ -156,20 +154,19 @@ class CommanderBacktester:
                 natr_ma=row['Normalized_ATR_MA']
             )
             
-            # 추세 전략 실행
-            trend_signal = row['trend_signal']
-            
-            # --- EXIT Conditions ---
-            # 1. 기본 매도 신호(MACD) 발생 or 2. 트레일링 스톱 가격 도달
-            if trend_position_active and (trend_signal == -1.0 or row['low'] <= trailing_stop_price):
+            # [REFACTORED] V-Recovery & Sideways Strategy Execution
+            signal = row['v_recovery_signal']
+
+            # --- EXIT Condition ---
+            if trend_position_active and (signal == -1.0 or row['low'] <= trailing_stop_price):
                 sell_value = holdings * current_price
                 cash += sell_value
                 holdings = 0
                 trend_position_active = False
                 total_trades += 1
 
-            # --- ENTRY Condition ---
-            elif not trend_position_active and 'TREND' in current_regime and trend_signal == 1.0:
+            # --- ENTRY Condition (V-Recovery) ---
+            elif not trend_position_active and current_regime == 'BULLISH_CONSOLIDATION' and signal == 1.0:
                 capital_to_invest = portfolio_value * active_capital_ratio
                 if cash >= capital_to_invest:
                     units_to_buy = capital_to_invest / current_price
@@ -177,14 +174,12 @@ class CommanderBacktester:
                     holdings += units_to_buy
                     trend_position_active = True
                     total_trades += 1
-                    # Trailing Stop Logic Start
                     peak_price_since_entry = current_price
                     trailing_stop_price = current_price * (1 - trailing_stop_pct)
-                    # Trailing Stop Logic End
             
-            # 횡보 전략 실행
+            # --- Sideways Strategy ---
             elif 'SIDEWAYS' in current_regime:
-                if trend_position_active:
+                if trend_position_active: # Regime change: exit trend position
                     sell_value = holdings * current_price
                     cash += sell_value
                     holdings = 0
@@ -196,14 +191,6 @@ class CommanderBacktester:
                 pnl_scalping, daily_trades = self._simulate_scalping_squad_pnl(capital_to_invest, intraday_data)
                 cash += pnl_scalping
                 total_trades += daily_trades
-
-            # 일일 기록 업데이트
-            portfolio_value = cash + holdings * current_price
-            portfolio_history.append({"date": today, "portfolio_value": portfolio_value})
-            
-            market_return = row["daily_return"]
-            if not pd.isna(market_return):
-                benchmark_value *= (1 + market_return)
 
         # 5. 최종 성과 보고
         if not portfolio_history:
