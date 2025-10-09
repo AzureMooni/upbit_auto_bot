@@ -234,9 +234,15 @@ if __name__ == "__main__":
     parser.add_argument("--end-date", default="2023-12-31", help="Backtest end date")
     args = parser.parse_args()
 
-    commander_backtester = CommanderBacktester(
-        start_date=args.start_date, 
-        end_date=args.end_date, 
-        initial_capital=1_000_000
-    )
-    commander_backtester.run_simulation()
+    if __name__ == "__main__":
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--start-date", default="2025-09-08", help="Backtest start date")
+        parser.add_argument("--end-date", default="2025-10-08", help="Backtest end date")
+        args = parser.parse_args()
+    
+        commander_backtester = CommanderBacktester(
+            start_date=args.start_date, 
+            end_date=args.end_date, 
+            initial_capital=1_000_000
+        )
+        commander_backtester.run_simulation()

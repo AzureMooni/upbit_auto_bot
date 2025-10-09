@@ -1,9 +1,7 @@
 
 import numpy as np
-import pandas as pd
 import gymnasium as gym
 from gymnasium import spaces
-from collections import deque
 
 class TradingEnv(gym.Env):
     """

@@ -1,5 +1,4 @@
 import pandas as pd
-import pandas_ta as ta
 
 def generate_v_recovery_signals(df: pd.DataFrame, rsi_period=14, macd_fast=12, macd_slow=26, macd_signal=9) -> pd.DataFrame:
     """

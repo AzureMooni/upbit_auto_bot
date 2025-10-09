@@ -7,3 +7,5 @@ pyarrow
 stable-baselines3
 tensorboard
 pyupbit
+tensorflow
+lightgbm

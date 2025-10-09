@@ -1,41 +1,44 @@
 # Git Ignore File for upbit_auto_bot project
 
-# Environment variables
-config/.env
-
-# Python specific ignores
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage*
-htmlcov/
-.tox/
+# Environment & IDEs
+.env
 .venv/
 venv/
 env/
-ENV/
-.ipynb_checkpoints/
-trader_env/
+.idea/
+.vscode/
+
+# Python Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build & Dist
 build/
 dist/
 *.egg-info/
-.eggs/
-pip-wheel-metadata/
 
-# IDEs and OS generated files
-.idea/
-.vscode/
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# Generated files, data, and models
-*.txt
-!runtime-requirements.txt
+# --- Project Specific --- #
+
+# Data & Models (Large or sensitive files)
 *.pkl
 *.h5
-# cache/
-data/
+*.joblib
+*.csv
+!/data/retraining_sets/missed_opportunity_*.csv # Allow only specific CSVs if needed, but generally ignore
+
+# Logs
+logs/
+*.log
+
+# Tensorboard Logs
+foundational_rl_tensorboard_logs/
+
+# Exclude specific temp files if any
+commit_message*.txt
