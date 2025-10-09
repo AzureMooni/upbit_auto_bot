@@ -5,6 +5,8 @@
 .venv/
 venv/
 env/
+ENV/
+trader_env/
 .idea/
 .vscode/
 
