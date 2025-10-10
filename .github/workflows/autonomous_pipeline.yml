@@ -1,5 +1,4 @@
-# .github/workflows/autonomous_pipeline.yml
-name: Rule-Based Strategy CI/CD Pipeline
+name: AI Commander v2.0 CI/CD Pipeline
 
 on:
   push:
@@ -7,90 +6,82 @@ on:
       - main
   workflow_dispatch:
 
+# ECR, AWS Region, etc.
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: ai-commander-v2
+
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  # 1. LINT JOB: 코드 품질 검사
-  lint:
+  build-and-push-to-ecr:
+    name: Build and Push to ECR
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install linter
-        run: pip install ruff
-      - name: Run linter
-        run: ruff check .
 
-  # 2. BACKTEST JOB: 전략 성능 검증
-  backtest:
-    runs-on: ubuntu-latest
-    needs: lint
-    outputs:
-      run_deploy: ${{ steps.quality_gate.outputs.run_deploy }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          python-version: '3.12'
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run Backtest for last 3 months
-        id: backtest_run
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }} # Assumes you have an OIDC role for GitHub Actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          # 최근 3개월에 대한 백테스트 실행 및 결과를 로그 파일에 저장
-          python commander_backtester.py --start-date $(date -d '3 months ago' +%Y-%m-%d) --end-date $(date +%Y-%m-%d) > backtest_results.log
-          # 로그 파일 내용 출력
-          cat backtest_results.log
-          # 최종 샤프 지수 값 추출
-          SHARPE_VALUE=$(grep 'FINAL_SHARPE=' backtest_results.log | cut -d '=' -f 2)
-          echo "EXTRACTED_SHARPE=$SHARPE_VALUE" >> $GITHUB_ENV
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Performance Quality Gate
-        id: quality_gate
-        run: |
-          echo "Recent 3-month Sharpe Ratio is: ${{ env.EXTRACTED_SHARPE }}"
-          # 샤프 지수가 0보다 클 경우에만 배포 진행
-          if (( $(echo "${{ env.EXTRACTED_SHARPE }} > 0" | bc -l) )); then
-            echo "✅ Sharpe Ratio is positive. Proceeding to deployment."
-            echo "run_deploy=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Sharpe Ratio is not positive. Deployment will be skipped."
-            echo "run_deploy=false" >> $GITHUB_OUTPUT
-          fi
-
-  # 3. DEPLOY JOB: EC2에 소스코드 배포
-  deploy:
+  deploy-to-ec2:
+    name: Deploy to EC2
     runs-on: ubuntu-latest
-    needs: backtest
-    if: needs.backtest.outputs.run_deploy == 'true'
+    needs: build-and-push-to-ecr
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Deploy source code to EC2
-        uses: appleboy/scp-action@master
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.AWS_EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
-          source: "."
-          target: "/home/ec2-user/upbit_auto_bot"
-          strip_components: 1
-      - name: Set script permissions and trigger sentinel
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Deploy to EC2 instance
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.AWS_EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
           script: |
-            chmod +x /home/ec2-user/upbit_auto_bot/run_sentinel.sh
-            echo "Sentinel script permissions set. Running initial check..."
-            /home/ec2-user/upbit_auto_bot/run_sentinel.sh
+            echo "Deploying new version of AI Commander..."
+            # 1. Pull the latest image from ECR
+            docker pull ${{ needs.build-and-push-to-ecr.outputs.image }}
+            
+            # 2. Stop and remove the old container if it exists
+            if [ "$(docker ps -q -f name=ai-commander)" ]; then
+                docker stop ai-commander
+                docker rm ai-commander
+            fi
+            
+            # 3. Run the new container
+            docker run -d --name ai-commander --restart always \
+              -v /home/ec2-user/upbit_auto_bot/config:/app/config \
+              -v /home/ec2-user/upbit_auto_bot/data:/app/data \
+              -v /home/ec2-user/upbit_auto_bot/logs:/app/logs \
+              ${{ needs.build-and-push-to-ecr.outputs.image }}
+            
+            echo "✅ AI Commander v2.0 deployment successful!"

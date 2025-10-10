@@ -1,183 +1,183 @@
-import asyncio
-import joblib
-from core.exchange import UpbitService
-from preprocessor import DataPreprocessor  # For generate_features
 
-# 고빈도 스캘핑을 위한 타겟 코인 목록
-SCALPING_TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW"]
+import pyupbit
+import pandas as pd
+import numpy as np
+import os
+import time
+import requests
+from datetime import datetime
+from dotenv import load_dotenv
 
+from universe_manager import get_top_10_coins
+from dl_predictor import predict_win_probability
+
+# --- Configuration ---
+load_dotenv(dotenv_path="config/.env")
+
+UPBIT_ACCESS_KEY = os.getenv('UPBIT_ACCESS_KEY')
+UPBIT_SECRET_KEY = os.getenv('UPBIT_SECRET_KEY')
+
+MODEL_PATH = "data/v2_lightgbm_model.joblib"
+TRANSACTION_FEE = 0.0005
+TRAILING_STOP_PCT = 0.10
+WIN_PROB_THRESHOLD = 0.55
+MAX_POSITION_RATIO = 0.25
+HALF_KELLY_FACTOR = 0.5
+
+NTFY_TOPIC = "upbit-live-trades"
+LOG_FILE_PATH = "logs/live_trader.log"
 
 class LiveTrader:
-    """
-    XGBoost 모델과 기계적 규칙에 기반한 고빈도 스캘핑 거래 실행기.
-    """
+    def __init__(self):
+        print("Initializing Live Trader...")
+        self.upbit = self._connect_to_upbit()
+        self.open_positions = {}
+        self._load_initial_positions()
 
-    def __init__(self, capital: float):
-        self.initial_capital = capital
-        self.upbit_service = UpbitService()
-        self.model = None
-        self.scaler = None
-        self.target_coins = SCALPING_TARGET_COINS
-        self.positions = {
-            ticker: False for ticker in self.target_coins
-        }  # 코인별 포지션 보유 상태
-
-    def _load_model(
-        self, model_path="price_predictor.pkl", scaler_path="price_scaler.pkl"
-    ):
-        """훈련된 XGBoost 모델과 스케일러를 로드합니다."""
+    def _connect_to_upbit(self):
+        if not UPBIT_ACCESS_KEY or not UPBIT_SECRET_KEY:
+            self.log("[FATAL] UPBIT_ACCESS_KEY or UPBIT_SECRET_KEY is not set in the .env file.")
+            exit()
         try:
-            self.model = joblib.load(model_path)
-            self.scaler = joblib.load(scaler_path)
-            print("✅ XGBoost 모델 및 스케일러 로드 완료.")
-        except FileNotFoundError:
-            print(
-                f"오류: 모델 파일('{model_path}') 또는 스케일러 파일('{scaler_path}')을 찾을 수 없습니다."
-            )
-            print("먼저 모델 훈련을 실행하세요.")
-            raise
-
-    async def _get_prediction(self, ticker: str):
-        """단일 코인에 대한 예측을 수행합니다."""
-        try:
-            df = await self.upbit_service.get_ohlcv(ticker, timeframe="1m", limit=100)
-            if df is None or df.empty:
-                return None
-
-            df_featured = DataPreprocessor.generate_features(df.copy())
-            latest_features = df_featured.tail(1)
-
-            features_to_predict = [
-                "RSI_14",
-                "BBL_20_2.0",
-                "BBM_20_2.0",
-                "BBU_20_2.0",
-                "MACD_12_26_9",
-                "MACDh_12_26_9",
-                "MACDs_12_26_9",
-            ]
-
-            if latest_features[features_to_predict].isnull().values.any():
-                return None  # 지표가 NaN이면 예측 불가
-
-            scaled_features = self.scaler.transform(
-                latest_features[features_to_predict]
-            )
-            prediction = self.model.predict(scaled_features)
-            return prediction[0]
+            upbit = pyupbit.Upbit(UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY)
+            balance = upbit.get_balance("KRW")
+            if balance is None:
+                self.log("[FATAL] Failed to fetch balance. Check API key permissions.")
+                exit()
+            self.log(f"[SUCCESS] Connected to Upbit. Current KRW Balance: {balance:,.0f} KRW")
+            return upbit
         except Exception as e:
-            print(f"  - {ticker} 예측 중 오류: {e}")
-            return None
+            self.log(f"[FATAL] Failed to connect to Upbit: {e}")
+            exit()
 
-    async def _manage_position(self, ticker: str, quantity: float, take_profit_price: float, stop_loss_price: float, buy_order_id: str):
-        """매수된 포지션에 대한 익절/손절을 OCO 방식으로 관리합니다."""
-        print(f"  - [Position] {ticker} 포지션 관리 시작. 수량: {quantity}, 익절가: {take_profit_price:,.0f}, 손절가: {stop_loss_price:,.0f}")
+    def _load_initial_positions(self):
+        balances = self.upbit.get_balances()
+        for balance in balances:
+            ticker = f"KRW-{balance['currency']}"
+            if balance['currency'] != 'KRW':
+                amount = float(balance['balance'])
+                avg_buy_price = float(balance['avg_buy_price'])
+                current_price = pyupbit.get_current_price(ticker)
+                self.open_positions[ticker] = {
+                    'entry_price': avg_buy_price,
+                    'peak_price': max(avg_buy_price, current_price if current_price else 0),
+                    'amount': amount
+                }
+        if self.open_positions:
+            self.log(f"[INFO] Loaded initial positions: {list(self.open_positions.keys())}")
 
-        # 1. 익절 및 손절 지정가 매도 주문 제출
-        tp_order = await self.upbit_service.create_limit_sell_order(ticker, quantity, take_profit_price)
-        sl_order = await self.upbit_service.create_limit_sell_order(ticker, quantity, stop_loss_price)
+    def log(self, message):
+        log_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        print(log_msg)
+        with open(LOG_FILE_PATH, 'a') as f:
+            f.write(log_msg + '\n')
 
-        if not tp_order or not sl_order:
-            print(f"  - [Error] {ticker} 익절/손절 주문 제출 실패. 포지션 강제 종료.")
-            # 주문 실패 시 시장가로 전량 매도하여 포지션 정리
-            await self.upbit_service.create_market_sell_order(ticker, quantity)
-            self.positions[ticker] = False
+    def send_notification(self, title, message):
+        try:
+            requests.post(f"https://ntfy.sh/{NTFY_TOPIC}", data=message.encode('utf-8'), headers={"Title": title.encode('utf-8'), "Tags": "tada"})
+        except Exception as e:
+            self.log(f"[WARN] Failed to send ntfy notification: {e}")
+
+    def check_exit_conditions(self):
+        if not self.open_positions:
+            return
+        self.log("[INFO] Checking exit conditions for open positions...")
+        for ticker in list(self.open_positions.keys()):
+            try:
+                position = self.open_positions[ticker]
+                current_price = pyupbit.get_current_price(ticker)
+                if current_price is None: continue
+
+                position['peak_price'] = max(position['peak_price'], current_price)
+                trailing_stop_price = position['peak_price'] * (1 - TRAILING_STOP_PCT)
+
+                if current_price <= trailing_stop_price:
+                    self.log(f"[EXIT] Trailing Stop triggered for {ticker} at {current_price:,.0f}")
+                    sell_result = self.upbit.sell_market_order(ticker, position['amount'])
+                    self.log(f"  - SELL order successful: {sell_result['uuid']}")
+                    self.send_notification(f"✅ SELL: {ticker}", f"Price: {current_price:,.0f}, Amount: {position['amount']:.4f}")
+                    del self.open_positions[ticker]
+                time.sleep(0.2)
+            except Exception as e:
+                self.log(f"[ERROR] Error checking exit for {ticker}: {e}")
+
+    def check_entry_conditions(self, universe):
+        self.log("[INFO] Checking entry conditions for new positions...")
+        try:
+            krw_balance = self.upbit.get_balance("KRW")
+            holdings_value = 0
+            if self.open_positions:
+                open_tickers = list(self.open_positions.keys())
+                current_prices = pyupbit.get_current_price(open_tickers)
+                
+                # 보유 코인이 하나일 때와 여러 개일 때를 모두 처리
+                if isinstance(current_prices, dict):
+                    holdings_value = sum(p['amount'] * current_prices.get(t, 0) for t, p in self.open_positions.items())
+                elif isinstance(current_prices, float) and len(open_tickers) == 1:
+                    holdings_value = self.open_positions[open_tickers[0]]['amount'] * current_prices
+
+            total_capital = krw_balance + holdings_value
+        except Exception as e:
+            self.log(f"[ERROR] Could not get account balance: {e}")
             return
 
-        tp_order_id = tp_order['id']
-        sl_order_id = sl_order['id']
-
-        print(f"  - [Order] {ticker} 익절 주문 ID: {tp_order_id}, 손절 주문 ID: {sl_order_id}")
-
-        while self.positions[ticker]:
+        for ticker in universe:
+            if ticker in self.open_positions: continue
             try:
-                # 주문 상태 조회
-                tp_status = await self.upbit_service.fetch_order(tp_order_id, ticker)
-                sl_status = await self.upbit_service.fetch_order(sl_order_id, ticker)
+                df = pyupbit.get_ohlcv(ticker, interval="minute60", count=80)
+                if df is None or len(df) < 80: continue
 
-                if tp_status and tp_status['status'] == 'closed':
-                    print(f"  - [SUCCESS] {ticker} 익절 주문 체결! ({tp_status['price']})")
-                    # 다른 주문 취소
-                    await self.upbit_service.cancel_order(sl_order_id, ticker)
-                    break
+                # [REVISED] Manual feature calculation
+                features = df.copy()
+                delta = features['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                features['RSI'] = 100 - (100 / (1 + (gain / loss)))
+                ema_fast = features['close'].ewm(span=12, adjust=False).mean()
+                ema_slow = features['close'].ewm(span=26, adjust=False).mean()
+                features['MACD_hist'] = ema_fast - ema_slow - (ema_fast - ema_slow).ewm(span=9, adjust=False).mean()
+                mid_band = features['close'].rolling(window=20).mean()
+                std_dev = features['close'].rolling(window=20).std()
+                features['BBP'] = (features['close'] - (mid_band - 2 * std_dev)) / (4 * std_dev)
+                high_low = features['high'] - features['low']
+                high_close = np.abs(features['high'] - features['close'].shift())
+                low_close = np.abs(features['low'] - features['close'].shift())
+                tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+                features['ATR'] = tr.rolling(window=14).mean()
+                features.dropna(inplace=True)
+                
+                if features.empty: continue
 
-                if sl_status and sl_status['status'] == 'closed':
-                    print(f"  - [FAILURE] {ticker} 손절 주문 체결! ({sl_status['price']})")
-                    # 다른 주문 취소
-                    await self.upbit_service.cancel_order(tp_order_id, ticker)
-                    break
+                live_features = features.tail(1)[['RSI', 'MACD_hist', 'BBP', 'ATR']]
+                p_win = predict_win_probability(live_features, MODEL_PATH)
 
+                if p_win > WIN_PROB_THRESHOLD:
+                    kelly_fraction = p_win - (1 - p_win)
+                    position_size_ratio = min(kelly_fraction * HALF_KELLY_FACTOR, MAX_POSITION_RATIO)
+                    position_size_krw = total_capital * position_size_ratio
+
+                    if krw_balance >= position_size_krw and position_size_krw > 5000:
+                        self.log(f"[ENTRY] BUY signal for {ticker} | P(win): {p_win:.2f} | Size: {position_size_krw:,.0f} KRW")
+                        buy_result = self.upbit.buy_market_order(ticker, position_size_krw)
+                        self.log(f"  - BUY order successful: {buy_result['uuid']}")
+                        current_price = pyupbit.get_current_price(ticker)
+                        bought_amount = position_size_krw / current_price
+                        self.open_positions[ticker] = {'entry_price': current_price, 'peak_price': current_price, 'amount': bought_amount}
+                        self.send_notification(f"✅ BUY: {ticker}", f"P(win): {p_win:.2f}, Size: {position_size_krw:,.0f} KRW")
+                time.sleep(0.2)
             except Exception as e:
-                print(f"  - {ticker} 포지션 관리 중 오류: {e}")
-                break
-            await asyncio.sleep(0.5)  # 0.5초마다 주문 상태 확인
+                self.log(f"[ERROR] Error checking entry for {ticker}: {e}")
 
-        self.positions[ticker] = False
-        print(f"  - [Position] {ticker} 포지션 종료.")
-
-    async def run(self):
-        """고빈도 스캘핑 거래 로직을 실행합니다."""
-        self._load_model()
-        await self.upbit_service.connect()
-        print("🚀 고빈도 퀀트 스캘핑 시스템 가동...")
-
+    def run(self):
         while True:
-            try:
-                # 이미 포지션을 보유한 코인은 예측에서 제외
-                coins_to_scan = [
-                    ticker for ticker, held in self.positions.items() if not held
-                ]
-                if not coins_to_scan:
-                    await asyncio.sleep(10)  # 모든 코인 포지션 보유 시 10초 대기
-                    continue
-
-                # 여러 코인에 대한 예측을 동시에 수행
-                prediction_tasks = [
-                    self._get_prediction(ticker) for ticker in coins_to_scan
-                ]
-                predictions = await asyncio.gather(*prediction_tasks)
-
-                for ticker, prediction in zip(coins_to_scan, predictions):
-                    if prediction == 1:  # 1: 매수 신호
-                        print(
-                            f"🔥 [Signal] {ticker}에서 매수 신호 포착! 즉시 거래 실행."
-                        )
-
-                        balance = await self.upbit_service.get_balance("KRW")
-                        capital_for_trade = balance * 0.5  # 가용 자본의 50% 사용
-
-                        if capital_for_trade < 5000:  # 최소 주문 금액
-                            print("  - 경고: 주문 가능 금액이 부족합니다.")
-                            continue
-
-                        order = await self.upbit_service.create_market_buy_order(
-                            ticker, capital_for_trade
-                        )
-                        if order and order.get("status") == "closed":
-                            entry_price = order.get(
-                                "average",
-                                await self.upbit_service.get_current_price(ticker),
-                            )
-                            quantity = order.get(
-                                "filled", capital_for_trade / entry_price
-                            )
-                            self.positions[ticker] = True
-
-                            # Calculate TP/SL prices here
-                            take_profit_price = entry_price * 1.005
-                            stop_loss_price = entry_price * 0.996
-
-                            asyncio.create_task(
-                                self._manage_position(ticker, quantity, take_profit_price, stop_loss_price, order['id'])
-                            )
-
-                await asyncio.sleep(60)  # 1분마다 새로운 캔들 확인
-
-            except Exception as e:
-                print(f"메인 루프 오류: {e}")
-                await asyncio.sleep(60)
-
+            self.log("\n--- Starting new trading cycle ---")
+            universe = get_top_10_coins()
+            self.check_exit_conditions()
+            self.check_entry_conditions(universe)
+            self.log("--- Cycle finished. Waiting for 1 hour. ---")
+            time.sleep(3600)
 
 if __name__ == "__main__":
-    trader = LiveTrader(capital=50000)
-    asyncio.run(trader.run())
+    os.makedirs("logs", exist_ok=True)
+    trader = LiveTrader()
+    trader.run()
