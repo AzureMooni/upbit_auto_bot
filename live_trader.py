@@ -169,11 +169,49 @@ class LiveTrader:
                 self.log(f"[ERROR] Error checking entry for {ticker}: {e}")
 
     def run(self):
+        """메인 실행 루프. 주기적으로 거래 로직을 실행합니다."""
         while True:
             self.log("\n--- Starting new trading cycle ---")
+            
+            # --- Bear Market Defense Protocol ---
+            try:
+                btc_df = pyupbit.get_ohlcv("KRW-BTC", interval="day", count=201)
+                if btc_df is None or len(btc_df) < 200:
+                    raise ValueError("Could not fetch sufficient BTC data for macro check.")
+                
+                btc_df['SMA_50'] = btc_df['close'].rolling(window=50).mean()
+                btc_df['SMA_200'] = btc_df['close'].rolling(window=200).mean()
+                
+                latest_sma50 = btc_df['SMA_50'].iloc[-1]
+                latest_sma200 = btc_df['SMA_200'].iloc[-1]
+
+                if latest_sma50 < latest_sma200:
+                    self.log("[DEFCON 1] BEAR MARKET DETECTED. Switching to Capital Preservation Mode.")
+                    if self.open_positions:
+                        for ticker in list(self.open_positions.keys()):
+                            position = self.open_positions[ticker]
+                            self.log(f"  - Liquidating {ticker}...")
+                            self.upbit.sell_market_order(ticker, position['amount'])
+                            self.send_notification(f"🚨 [DEFCON 1] Liquidated: {ticker}", "Bear market detected.")
+                            del self.open_positions[ticker]
+                    
+                    self.log("--- Cycle finished (Capital Preservation). Waiting for 1 hour. ---")
+                    time.sleep(3600)
+                    continue # Skip all other logic
+            except Exception as e:
+                self.log(f"[ERROR] CRITICAL: Failed to check macro market regime: {e}")
+                self.log("--- Cycle finished due to critical error. Waiting for 1 hour. ---")
+                time.sleep(3600)
+                continue
+            # --- Protocol End ---
+
+            # 1. 유니버스 업데이트
             universe = get_top_10_coins()
+            # 2. 포지션 종료 조건 확인
             self.check_exit_conditions()
+            # 3. 신규 진입 조건 확인
             self.check_entry_conditions(universe)
+            
             self.log("--- Cycle finished. Waiting for 1 hour. ---")
             time.sleep(3600)
 

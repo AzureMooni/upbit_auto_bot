@@ -1,0 +1,21 @@
+name: Weekly Model Retraining
+
+on:
+  workflow_dispatch: # Manual trigger
+  schedule:
+    - cron: '0 5 * * 0' # Runs at 5:00 AM UTC every Sunday
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger EC2 retraining script
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ec2-user/upbit_auto_bot
+            chmod +x run_weekly_retraining.sh
+            ./run_weekly_retraining.sh
