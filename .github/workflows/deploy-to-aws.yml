@@ -1,0 +1,49 @@
+# 워크플로우의 이름
+name: Deploy and Run Sentinel on EC2
+
+# 언제 이 워크플로우를 실행할지 정의
+on:
+  push:
+    branches:
+      - main  # 'main' 브랜치에 코드가 push될 때만 실행
+
+# 어떤 작업을 수행할지 정의
+jobs:
+  deploy-and-run:
+    # 실행될 가상 환경의 종류
+    runs-on: ubuntu-latest
+
+    # 작업 단계들
+    steps:
+      # 1단계: 저장소 코드를 체크아웃합니다.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2단계: AWS 자격 증명을 설정합니다.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1  # 인스턴스 정보에 명시된 'ap-southeast-1' (싱가포르) 리전으로 수정했습니다.
+
+      # 3단계: EC2에 접속하여 스크립트를 실행합니다.
+      - name: SSH into EC2, Pull Code, and Run Script
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          script: |
+            # 봇이 있는 프로젝트 폴더로 이동합니다.
+            cd /home/ec2-user/upbit_auto_bot  
+            
+            # GitHub에서 최신 코드를 내려받습니다.
+            git pull
+            
+            # 새로운 라이브러리가 추가되었을 수 있으니, 의존성을 다시 설치합니다.
+            pip install -r requirements.txt
+            
+            # 메인 스크립트를 실행합니다.
+            echo "Running sentinel.py..."
+            python3 sentinel.py
