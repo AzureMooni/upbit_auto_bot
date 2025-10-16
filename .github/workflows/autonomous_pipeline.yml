@@ -6,9 +6,8 @@ on:
       - main
   workflow_dispatch:
 
-# ECR, AWS Region, etc.
 env:
-  AWS_REGION: ap-northeast-2
+  AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: ai-commander-v2
 
 permissions:
@@ -24,10 +23,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }} # Assumes you have an OIDC role for GitHub Actions
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -50,34 +49,27 @@ jobs:
     needs: build-and-push-to-ecr
     
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
       - name: Deploy to EC2 instance
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.AWS_EC2_HOST }}
-          username: ec2-user
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
           script: |
             echo "Deploying new version of AI Commander..."
-            # 1. Pull the latest image from ECR
+            # Login to ECR (Requires AWS CLI v2 and Docker on EC2)
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+            
+            # Pull the latest image from ECR
             docker pull ${{ needs.build-and-push-to-ecr.outputs.image }}
             
-            # 2. Stop and remove the old container if it exists
+            # Stop and remove the old container if it exists
             if [ "$(docker ps -q -f name=ai-commander)" ]; then
                 docker stop ai-commander
                 docker rm ai-commander
             fi
             
-            # 3. Run the new container
+            # Run the new container
             docker run -d --name ai-commander --restart always \
               -v /home/ec2-user/upbit_auto_bot/config:/app/config \
               -v /home/ec2-user/upbit_auto_bot/data:/app/data \
