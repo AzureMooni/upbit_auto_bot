@@ -4,19 +4,22 @@ FROM python:3.11-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies required for some Python packages
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
+# Copy the requirements file
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-# Note: tensorflow-macos and -metal are for local dev, the container will use the standard tensorflow
 
-# Copy the rest of the application's code into the container
+# Install TensorFlow separately for the container environment
+RUN pip install --no-cache-dir tensorflow
+
+# Copy the rest of the application code
 COPY . .
 
 # Define the command to run your app
