@@ -1,4 +1,4 @@
-name: Deploy and Run on EC2
+name: Deploy AI Commander to EC2
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          source: "deploy.sh,requirements.txt,sentinel.py,universe_manager.py,dl_predictor.py,multi_asset_backtester.py,rl_environment.py,foundational_model_trainer.py,preprocessor.py,risk_manager.py,strategies/" # 필요한 모든 파일 전송
+          source: "deploy.sh,requirements.txt,live_trader.py,universe_manager.py,dl_predictor.py,config/.env,data/v2_lightgbm_model.joblib" # 실행에 필수적인 파일만 전송
           target: "/home/ec2-user/upbit_auto_bot"
 
       - name: Run deployment script on EC2
