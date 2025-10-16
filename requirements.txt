@@ -1,6 +1,6 @@
 xgboost
 scikit-learn
-pandas-ta
+git+https://github.com/aarigs/pandas-ta.git
 ccxt
 python-dotenv
 pyarrow
