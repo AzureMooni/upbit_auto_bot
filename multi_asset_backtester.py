@@ -69,4 +69,4 @@ def run_backtest(start_date, end_date):
     print(f"\n--- 📊 Final Report ---\n  - Return: {total_return:.2f}%, MDD: {mdd:.2f}%, Sharpe: {sharpe:.2f}")
 
 if __name__ == '__main__':
-    run_backtest(start_date="2021-01-01", end_date="2023-12-31")
+    run_backtest(start_date="2021-01-01", end_date="2021-12-31")
