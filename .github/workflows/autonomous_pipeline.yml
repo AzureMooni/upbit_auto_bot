@@ -74,7 +74,6 @@ jobs:
             set -e
 
             # 2. EC2에 부여된 IAM 역할을 사용하여 AWS ECR에 로그인합니다.
-            # 이 단계에서는 GitHub Actions의 자격 증명이 필요 없습니다.
             echo "Logging in to Amazon ECR..."
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
 
@@ -88,16 +87,16 @@ jobs:
             docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
             # 5. 스크립트 대신, 영원히 대기하는 명령어를 실행하여 컨테이너를 살아있게 만듭니다.
-          # 이것은 우리가 직접 접속하여 디버깅할 시간을 벌어줍니다.
-          echo "Starting container in standby mode for debugging..."
-          docker run -d \
-            --name upbit-bot \
-            --restart always \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
-            tail -f /dev/null
-            
+            # 이것은 우리가 직접 접속하여 디버깅할 시간을 벌어줍니다.
+            echo "Starting container in standby mode for debugging..."
+            docker run -d \
+              --name upbit-bot \
+              --restart always \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
+              tail -f /dev/null
+
             # 6. 사용하지 않는 오래된 Docker 이미지를 정리하여 디스크 공간을 확보합니다.
             echo "Cleaning up old images..."
             docker image prune -af
-            
+
             echo "Deployment successful!"
