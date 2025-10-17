@@ -7,6 +7,7 @@ import time
 import requests
 from datetime import datetime
 import sys
+import traceback
 
 # Check if API keys are provided as command-line arguments
 if len(sys.argv) != 3:
@@ -42,12 +43,13 @@ class LiveTrader:
             balance = upbit.get_balance("KRW")
             if balance is None:
                 self.log("[FATAL] Failed to fetch balance. Check API key permissions.")
-                exit()
+                sys.exit(1)
             self.log(f"[SUCCESS] Connected to Upbit. Current KRW Balance: {balance:,.0f} KRW")
             return upbit
         except Exception as e:
-            self.log(f"[FATAL] Failed to connect to Upbit: {e}")
-            exit()
+            error_details = traceback.format_exc()
+            self.log(f"[FATAL] An unexpected error occurred: {e}\n{error_details}")
+            sys.exit(1)
 
     def _load_initial_positions(self):
         balances = self.upbit.get_balances()

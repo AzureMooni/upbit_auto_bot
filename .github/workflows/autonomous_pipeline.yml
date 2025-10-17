@@ -89,7 +89,7 @@ jobs:
 
             # 5. 최신 이미지를 사용하여 새 컨테이너를 실행하고, API 키를 명령줄 인수로 직접 전달합니다.
             echo "Starting new container with command-line arguments..."
-            docker run -d \
+            docker run \
               --name upbit-bot \
               --restart always \
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
