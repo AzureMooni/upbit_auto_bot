@@ -1,82 +1,49 @@
+
 import pandas as pd
-import numpy as np
-import os
 import lightgbm as lgb
 import joblib
+import os
+from market_regime_detector import precompute_all_indicators
 
 def train_price_prediction_model(data: pd.DataFrame, model_save_path: str, future_steps=12, profit_threshold=0.02):
-    """
-    LightGBM 모델을 훈련하여 미래 가격 상승 확률을 예측합니다.
-    모든 코인 데이터를 사용하여 하나의 일반화된 모델을 훈련합니다.
-    """
-    print("[INFO] Starting LightGBM model training process...")
+    print("[INFO] Starting Advanced Model training process...")
+    df = precompute_all_indicators(data.copy())
+
+    df['future_price'] = df['close'].shift(-future_steps)
+    df['label'] = (df['future_price'] > df['close'] * (1 + profit_threshold)).astype(int)
+    df.dropna(inplace=True)
+
+    # [FIX] Correct and complete feature column names
+    feature_cols = [
+        'RSI_14', 'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9',
+        'BBP_20_2.0', 'BBB_20_2.0', 'ATRr_14',
+        'STOCHk_14_14_3_3', 'STOCHd_14_14_3_3',
+        'PPO_12_26_9', 'PPOh_12_26_9', 'PPOs_12_26_9'
+    ]
     
-    all_features = []
-    all_labels = []
+    # Ensure all feature columns exist
+    for col in feature_cols:
+        if col not in df.columns:
+            raise ValueError(f"Feature column {col} not found in DataFrame after indicator calculation.")
 
-    for ticker, df_ticker in data.groupby('ticker'):
-        print(f"[INFO] Processing features and labels for {ticker}...")
-        df = df_ticker.copy()
-        
-        # --- Manual Indicator Calculations ---
-        # RSI
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
+    X = df[feature_cols]
+    y = df['label']
 
-        # MACD
-        ema_fast = df['close'].ewm(span=12, adjust=False).mean()
-        ema_slow = df['close'].ewm(span=26, adjust=False).mean()
-        macd_line = ema_fast - ema_slow
-        signal_line = macd_line.ewm(span=9, adjust=False).mean()
-        df['MACD_hist'] = macd_line - signal_line
-
-        # Bollinger Bands %B
-        mid_band = df['close'].rolling(window=20).mean()
-        std_dev = df['close'].rolling(window=20).std()
-        upper_band = mid_band + (std_dev * 2)
-        lower_band = mid_band - (std_dev * 2)
-        df['BBP'] = (df['close'] - lower_band) / (upper_band - lower_band)
-
-        # ATR
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift())
-        low_close = np.abs(df['low'] - df['close'].shift())
-        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        df['ATR'] = tr.rolling(window=14).mean()
-        df.dropna(inplace=True)
-
-        # Labels (y)
-        df['future_price'] = df['close'].shift(-future_steps)
-        df['label'] = (df['future_price'] > df['close'] * (1 + profit_threshold)).astype(int)
-        df.dropna(inplace=True)
-
-        feature_cols = ['RSI', 'MACD_hist', 'BBP', 'ATR']
-        all_features.append(df[feature_cols])
-        all_labels.append(df['label'])
-
-    X = pd.concat(all_features)
-    y = pd.concat(all_labels)
-
-    print(f"[INFO] Total training samples: {len(X)}")
-
-    # LightGBM 모델 훈련
-    print("[INFO] Training LightGBM model...")
+    print(f"[INFO] Training with {len(X)} samples and {len(feature_cols)} features.")
     lgb_clf = lgb.LGBMClassifier(objective='binary', n_estimators=1000, random_state=42)
-    lgb_clf.fit(X, y, eval_set=[(X, y)], callbacks=[lgb.early_stopping(10, verbose=False)])
+    lgb_clf.fit(X, y)
 
     joblib.dump(lgb_clf, model_save_path)
-    print(f"[SUCCESS] Model training complete. Model saved to {model_save_path}")
+    print(f"[SUCCESS] Advanced model saved to {model_save_path}")
 
-def predict_win_probability(live_data_features: pd.DataFrame, model_path: str) -> float:
-    if not os.path.exists(model_path):
-        return 0.0
-    try:
-        model = joblib.load(model_path)
-        win_prob = model.predict_proba(live_data_features)[:, 1][0]
-        return float(win_prob)
-    except Exception as e:
-        print(f"[ERROR] Failed to predict win probability: {e}")
-        return 0.0
+def predict_win_probability(live_features: pd.DataFrame, model_path: str) -> float:
+    if not os.path.exists(model_path): return 0.0
+    model = joblib.load(model_path)
+    # Ensure columns are in the same order as training
+    feature_cols = [
+        'RSI_14', 'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9',
+        'BBP_20_2.0', 'BBB_20_2.0', 'ATRr_14',
+        'STOCHk_14_14_3_3', 'STOCHd_14_14_3_3',
+        'PPO_12_26_9', 'PPOh_12_26_9', 'PPOs_12_26_9'
+    ]
+    return float(model.predict_proba(live_features[feature_cols])[:, 1][0])

@@ -50,12 +50,6 @@ jobs:
     needs: build-and-push-to-ecr
     
     steps:
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Deploy to EC2 instance
         uses: appleboy/ssh-action@master
         with:
@@ -77,9 +71,9 @@ jobs:
             
             # Run the new container
             docker run -d --name ai-commander --restart always \
-              -v /home/ec2-user/upbit_auto_bot/config:/app/config \
-              -v /home/ec2-user/upbit_auto_bot/data:/app/data \
-              -v /home/ec2-user/upbit_auto_bot/logs:/app/logs \
+              -v /home/ec2-user/upbit_auto_bot/config:/home/appuser/app/config \
+              -v /home/ec2-user/upbit_auto_bot/data:/home/appuser/app/data \
+              -v /home/ec2-user/upbit_auto_bot/logs:/home/appuser/app/logs \
               ${{ needs.build-and-push-to-ecr.outputs.image }}
             
             echo "Waiting for container to start..."

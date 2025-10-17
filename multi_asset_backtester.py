@@ -1,78 +1,72 @@
-
 import pandas as pd
 import numpy as np
 import os
-from universe_manager import get_top_10_coins
 from dl_predictor import train_price_prediction_model, predict_win_probability
-from market_regime_detector import precompute_regime_indicators, get_market_regime
+from market_regime_detector import precompute_all_indicators, get_market_regime
 
-# --- Configuration ---
 INITIAL_CAPITAL = 1_000_000
-MODEL_PATH = "data/v2_lightgbm_model.joblib"
+MODEL_PATH = "data/btc_advanced_model.joblib"
 TRANSACTION_FEE = 0.0005
 TRAILING_STOP_PCT = 0.10
 
-def run_multi_asset_backtest(start_date, end_date):
-    print("--- Starting Multi-Asset Backtest for AI Commander v2.0 (with Defense Protocol) ---")
+def run_backtest(start_date, end_date):
+    print("--- Starting Final Backtest with Advanced Features ---")
     
-    local_data = pd.read_pickle("sample_data.pkl")
-    trading_universe = local_data['ticker'].unique().tolist()
+    ticker = "KRW-BTC"
+    full_df = pd.read_parquet(f"data/{ticker}.parquet")
     
-    all_daily_data = []
-    for ticker in trading_universe:
-        df_ticker = local_data[local_data['ticker'] == ticker].resample('D').agg(
-            {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last'}
-        ).dropna()
-        df_ticker.columns = [f"{ticker.replace('KRW-','')}_{col}" for col in df_ticker.columns]
-        all_daily_data.append(df_ticker)
-    
-    backtest_df = pd.concat(all_daily_data, axis=1).dropna()
-    
-    btc_df = pd.DataFrame({
-        'open': backtest_df['BTC_open'], 'high': backtest_df['BTC_high'],
-        'low': backtest_df['BTC_low'], 'close': backtest_df['BTC_close'],
-    })
-    regime_indicators = precompute_regime_indicators(btc_df)
-    backtest_df = backtest_df.join(regime_indicators, how='inner')
+    # 모든 지표를 한 번에 사전 계산
+    data_with_features = precompute_all_indicators(full_df.copy())
 
     if not os.path.exists(MODEL_PATH):
         os.makedirs("data", exist_ok=True)
-        train_price_prediction_model(local_data, MODEL_PATH)
+        train_price_prediction_model(full_df, MODEL_PATH)
     
     capital = INITIAL_CAPITAL
     portfolio_history = pd.Series(index=pd.to_datetime(pd.date_range(start=start_date, end=end_date, freq='D')), dtype=float)
-    open_positions = {}
+    position = None
 
-    for today, row in backtest_df.iterrows():
+    # 일봉 데이터로 백테스트 루프 실행
+    daily_df = data_with_features.resample('D').last()
+    for today, row in daily_df.iterrows():
         if not (pd.to_datetime(start_date) <= today <= pd.to_datetime(end_date)): continue
 
-        portfolio_value = capital + sum(p['amount'] * row[f"{t.replace('KRW-','')}_close"] for t, p in open_positions.items())
+        current_price = row['close']
+        portfolio_value = capital + (position['amount'] * current_price if position else 0)
         portfolio_history[today] = portfolio_value
 
         current_regime = get_market_regime(row)
         
         if current_regime == 'BEARISH':
-            if open_positions:
-                for ticker in list(open_positions.keys()):
-                    sell_price = row[f"{ticker.replace('KRW-','')}_close"]
-                    capital += open_positions[ticker]['amount'] * sell_price * (1 - TRANSACTION_FEE)
-                    del open_positions[ticker]
+            if position:
+                capital += position['amount'] * current_price * (1 - TRANSACTION_FEE)
+                position = None
             continue
 
-    # [FIX] Report generation with empty history check
-    if portfolio_history.dropna().empty:
-        print("\n[WARN] No trading activity during the backtest period. Cannot generate performance report.")
-        return
+        if position and row['low'] <= position['trailing_stop']:
+            capital += position['amount'] * row['low'] * (1 - TRANSACTION_FEE)
+            position = None
+
+        if not position:
+            p_win = predict_win_probability(pd.DataFrame([row]), MODEL_PATH)
+            if p_win > 0.65: # 진입 기준 상향 조정
+                position_size = capital * 0.2 # 단순화된 포지션 크기
+                amount = (position_size / current_price) * (1 - TRANSACTION_FEE)
+                capital -= position_size
+                position = {'amount': amount, 'peak_price': current_price, 'trailing_stop': current_price * (1 - TRAILING_STOP_PCT)}
+
+        if position:
+            position['peak_price'] = max(position['peak_price'], row['high'])
+            position['trailing_stop'] = position['peak_price'] * (1 - TRAILING_STOP_PCT)
+
+    if portfolio_history.dropna().empty: return
 
     final_value = portfolio_history.dropna().iloc[-1]
     total_return = (final_value / INITIAL_CAPITAL - 1) * 100
     mdd = (portfolio_history / portfolio_history.cummax() - 1).min() * 100
     sharpe = (portfolio_history.pct_change().mean() / portfolio_history.pct_change().std()) * np.sqrt(365)
 
-    print("\n--- 📊 Backtest Final Report ---")
-    print(f"  - Final Value: {final_value:,.0f} KRW, Return: {total_return:.2f}%")
-    print(f"  - MDD: {mdd:.2f}%, Sharpe: {sharpe:.2f}")
+    print(f"\n--- 📊 Final Report ---\n  - Return: {total_return:.2f}%, MDD: {mdd:.2f}%, Sharpe: {sharpe:.2f}")
 
 if __name__ == '__main__':
-    # [FIX] Set backtest period to match the actual range of sample_data.pkl
-    run_multi_asset_backtest(start_date="2025-08-28", end_date="2025-10-08")
+    run_backtest(start_date="2021-01-01", end_date="2023-12-31")

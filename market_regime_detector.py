@@ -1,55 +1,60 @@
 import pandas as pd
-import pandas_ta as ta
+import numpy as np
 
-def precompute_regime_indicators(df: pd.DataFrame, adx_len=14, atr_len=14, natr_ma_len=90, ema_fast_len=20, ema_slow_len=50, sma_slow_len=200):
+def precompute_all_indicators(df: pd.DataFrame):
     """
-    백테스팅에 필요한 모든 시장 체제 관련 지표를 사전에 일괄 계산합니다.
-    [NEW] 50일, 200일 SMA를 추가합니다.
+    [FINAL] 모든 지표를 pandas 기본 함수만으로 직접 계산하여 안정성을 확보합니다.
     """
-    df_copy = df.copy()
+    # RSI
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI_14'] = 100 - (100 / (1 + rs))
 
-    # 기존 지표 계산
-    df_copy['ADX'] = df_copy.ta.adx(length=adx_len)[f'ADX_{adx_len}']
-    atr = df_copy.ta.atr(length=atr_len)
-    df_copy['Normalized_ATR'] = (atr / df_copy['close']) * 100
-    df_copy['Normalized_ATR_MA'] = df_copy['Normalized_ATR'].rolling(window=natr_ma_len, min_periods=30).mean()
-    df_copy['EMA_20'] = df_copy['close'].ewm(span=ema_fast_len, adjust=False).mean()
+    # MACD
+    ema_fast = df['close'].ewm(span=12, adjust=False).mean()
+    ema_slow = df['close'].ewm(span=26, adjust=False).mean()
+    df['MACD_12_26_9'] = ema_fast - ema_slow
+    df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9, adjust=False).mean()
+    df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
+
+    # Bollinger Bands
+    mid_band = df['close'].rolling(window=20).mean()
+    std_dev = df['close'].rolling(window=20).std()
+    upper_band = mid_band + (std_dev * 2)
+    lower_band = mid_band - (std_dev * 2)
+    df['BBP_20_2.0'] = (df['close'] - lower_band) / (upper_band - lower_band)
+    df['BBB_20_2.0'] = (upper_band - lower_band) / mid_band
+
+    # ATR
+    high_low = df['high'] - df['low']
+    high_close = np.abs(df['high'] - df['close'].shift())
+    low_close = np.abs(df['low'] - df['close'].shift())
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    df['ATRr_14'] = (tr.rolling(window=14).mean() / df['close']) * 100
+
+    # Stochastic RSI
+    rsi = df['RSI_14']
+    stoch_rsi_k = (rsi - rsi.rolling(14).min()) / (rsi.rolling(14).max() - rsi.rolling(14).min())
+    df['STOCHk_14_14_3_3'] = stoch_rsi_k.rolling(3).mean() * 100
+    df['STOCHd_14_14_3_3'] = df['STOCHk_14_14_3_3'].rolling(3).mean()
+
+    # PPO (Percentage Price Oscillator)
+    ppo_ema_fast = df['close'].ewm(span=12, adjust=False).mean()
+    ppo_ema_slow = df['close'].ewm(span=26, adjust=False).mean()
+    df['PPO_12_26_9'] = ((ppo_ema_fast - ppo_ema_slow) / ppo_ema_slow) * 100
+    df['PPOs_12_26_9'] = df['PPO_12_26_9'].ewm(span=9, adjust=False).mean()
+    df['PPOh_12_26_9'] = df['PPO_12_26_9'] - df['PPOs_12_26_9']
+
+    # Macro Indicators
+    df['SMA_50'] = df['close'].rolling(window=50).mean()
+    df['SMA_200'] = df['close'].rolling(window=200).mean()
     
-    # [NEW] 50일, 200일 SMA 계산
-    df_copy['SMA_50'] = df_copy['close'].rolling(window=ema_slow_len).mean()
-    df_copy['SMA_200'] = df_copy['close'].rolling(window=sma_slow_len).mean()
-    
-    df_copy.dropna(inplace=True)
-    return df_copy
+    df.dropna(inplace=True)
+    return df
 
-def get_market_regime(row: pd.Series, adx_trend=25, adx_sideways=20) -> str:
-    """
-    미리 계산된 지표 값(DataFrame의 한 행)을 기반으로 시장 체제를 결정합니다.
-    'BEARISH' 체제를 최우선으로 판별합니다.
-    """
-    # [NEW] 1순위: 하락장 방어 프로토콜 (데드 크로스)
+def get_market_regime(row: pd.Series) -> str:
     if row['SMA_50'] < row['SMA_200']:
         return 'BEARISH'
-
-    # 2순위: 강세장 속 숨고르기
-    if row['close'] > row['SMA_50'] and 20 <= row['ADX'] < 25:
-        return 'BULLISH_CONSOLIDATION'
-
-    # 3순위: 기존 추세/횡보 구분
-    if row['ADX'] > adx_trend:
-        trend = 'TREND'
-    elif row['ADX'] < adx_sideways:
-        trend = 'SIDEWAYS'
-    else:
-        trend = 'UNDEFINED'
-
-    # 변동성 결정
-    if row['Normalized_ATR'] > row['Normalized_ATR_MA']:
-        volatility = 'HIGH_VOL'
-    else:
-        volatility = 'LOW_VOL'
-
-    if trend == 'UNDEFINED':
-        return 'UNDEFINED'
-
-    return f"{trend}_{volatility}"
+    return 'NEUTRAL'
