@@ -197,12 +197,12 @@ class LiveTrader:
                     
                     self.log("--- Cycle finished (Capital Preservation). Waiting for 1 hour. ---")
                     time.sleep(3600)
-                    continue # Skip all other logic
+                    return # Skip all other logic
             except Exception as e:
                 self.log(f"[ERROR] CRITICAL: Failed to check macro market regime: {e}")
                 self.log("--- Cycle finished due to critical error. Waiting for 1 hour. ---")
                 time.sleep(3600)
-                continue
+                return
             # --- Protocol End ---
 
             # 1. 유니버스 업데이트
