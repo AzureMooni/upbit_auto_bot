@@ -31,4 +31,4 @@ WORKDIR /home/appuser/app
 COPY --chown=appuser:appuser . .
 
 # Define the command to run your app
-CMD ["python", "live_trader.py"]
+ENTRYPOINT ["python", "live_trader.py"]

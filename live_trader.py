@@ -6,16 +6,15 @@ import os
 import time
 import requests
 from datetime import datetime
-from dotenv import load_dotenv
+import sys
 
-from universe_manager import get_top_10_coins
-from dl_predictor import predict_win_probability
+# Check if API keys are provided as command-line arguments
+if len(sys.argv) != 3:
+    print("[FATAL] API Keys were not provided as command-line arguments.")
+    sys.exit(1) # Exit with an error code
 
-# --- Configuration ---
-load_dotenv(dotenv_path="config/.env")
-
-UPBIT_ACCESS_KEY = os.getenv('UPBIT_ACCESS_KEY')
-UPBIT_SECRET_KEY = os.getenv('UPBIT_SECRET_KEY')
+UPBIT_ACCESS_KEY = sys.argv[1]
+UPBIT_SECRET_KEY = sys.argv[2]
 
 MODEL_PATH = "data/v2_lightgbm_model.joblib"
 TRANSACTION_FEE = 0.0005
