@@ -18,7 +18,8 @@ jobs:
   build-and-push-to-ecr:
     name: Build and Push to ECR
     runs-on: ubuntu-latest
-    
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,12 +50,6 @@ jobs:
     needs: build-and-push-to-ecr
     
     steps:
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Deploy to EC2 instance
         uses: appleboy/ssh-action@master
         with:
@@ -62,24 +57,26 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
           script: |
-            # 1. 어떤 명령이라도 실패하면 즉시 중단합니다 (오류 은폐 방지)
             set -e
-
-            # 2. ECR에서 최신 버전의 Docker 이미지를 내려받습니다.
+            echo "Deploying new version of AI Commander..."
+            
+            # Pull the latest image from ECR
             docker pull ${{ needs.build-and-push-to-ecr.outputs.image }}
             
-            # 5. 최신 이미지를 사용하여 새로운 컨테이너를 백그라운드에서 실행합니다.
-            # --name 옵션으로 컨테이너에 'ai-commander'라는 고정된 이름을 부여합니다.
-            echo "Starting new container..."
+            # Stop and remove the old container if it exists
+            if [ "$(docker ps -q -f name=ai-commander)" ]; then
+                docker stop ai-commander
+                docker rm ai-commander
+            fi
+            
+            # Run the new container
             docker run -d --name ai-commander --restart always \
               -v /home/ec2-user/upbit_auto_bot/config:/app/config \
               -v /home/ec2-user/upbit_auto_bot/data:/app/data \
               -v /home/ec2-user/upbit_auto_bot/logs:/app/logs \
               ${{ needs.build-and-push-to-ecr.outputs.image }}
             
-            # 6. (가장 중요) 잠시 기다린 후, 컨테이너가 정말로 실행 중인지 확인합니다.
-            # 이 단계가 실패하면 GitHub Actions 전체가 '실패'로 표시됩니다.
             echo "Waiting for container to start..."
             sleep 10
             docker ps
-            echo "Deployment successful. Container is running."
+            echo "✅ AI Commander v2.0 deployment successful!"
