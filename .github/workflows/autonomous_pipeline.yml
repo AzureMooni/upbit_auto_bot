@@ -88,9 +88,14 @@ jobs:
             docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
             # 5. 최신 이미지를 사용하여 새 컨테이너를 백그라운드에서 실행합니다.
-            # --restart always 옵션은 서버가 재부팅되어도 컨테이너를 자동으로 다시 시작해줍니다.
-            echo "Starting new container..."
-            docker run -d --name upbit-bot --restart always ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            # -e 옵션을 사용하여 GitHub Secrets를 컨테이너의 환경 변수로 주입합니다.
+            echo "Starting new container with API keys..."
+            docker run -d \
+              --name upbit-bot \
+              --restart always \
+              -e UPBIT_ACCESS_KEY=${{ secrets.UPBIT_ACCESS_KEY }} \
+              -e UPBIT_SECRET_KEY=${{ secrets.UPBIT_SECRET_KEY }} \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             
             # 6. 사용하지 않는 오래된 Docker 이미지를 정리하여 디스크 공간을 확보합니다.
             echo "Cleaning up old images..."
