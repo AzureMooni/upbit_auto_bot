@@ -65,11 +65,8 @@ jobs:
           script: |
             set -e
             echo "Deploying new version of AI Commander..."
-
-            # [FIX] Explicitly log in to ECR from the EC2 instance
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
             
-            # Pull the latest image from ECR
+            # Pull the latest image from ECR (assumes EC2 instance has IAM role for ECR)
             docker pull ${{ needs.build-and-push-to-ecr.outputs.image }}
             
             # Stop and remove the old container if it exists
