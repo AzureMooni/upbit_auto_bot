@@ -49,6 +49,12 @@ jobs:
     needs: build-and-push-to-ecr
     
     steps:
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Deploy to EC2 instance
         uses: appleboy/ssh-action@master
         with:
