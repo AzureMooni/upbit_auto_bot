@@ -1,6 +1,7 @@
 import sys
 import pyupbit
 import traceback
+from universe_manager import get_top_10_coins
 
 def main():
     print("--- [DEBUG] Initializing Live Trader v3 ---")
