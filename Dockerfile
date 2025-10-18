@@ -16,6 +16,10 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# [추가] Install specific library versions for compatibility
+RUN pip install pyjwt==2.3.0
+RUN pip install pyupbit
+
 # Install TensorFlow for the Linux container environment
 RUN pip install --no-cache-dir tensorflow
 
