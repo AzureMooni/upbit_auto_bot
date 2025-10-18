@@ -86,14 +86,14 @@ jobs:
             echo "Pulling latest image from ECR..."
             docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
-            # 5. 최신 이미지를 사용하여 새 컨테이너를 실행하고, API 키를 명령줄 인수로 직접 전달합니다.
-            echo "Starting new container with API keys as arguments..."
+            # 5. 최신 이미지를 사용하여 새 컨테이너를 실행하고, API 키를 환경 변수로 안전하게 전달합니다.
+            echo "Starting new container with API keys as environment variables..."
             docker run -d \
               --name upbit-bot \
               --restart always \
-              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
-              "${{ secrets.UPBIT_ACCESS_KEY }}" \
-              "${{ secrets.UPBIT_SECRET_KEY }}"
+              -e UPBIT_ACCESS_KEY="${{ secrets.UPBIT_ACCESS_KEY }}" \
+              -e UPBIT_SECRET_KEY="${{ secrets.UPBIT_SECRET_KEY }}" \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
             # 6. 사용하지 않는 오래된 Docker 이미지를 정리하여 디스크 공간을 확보합니다.
             echo "Cleaning up old images..."

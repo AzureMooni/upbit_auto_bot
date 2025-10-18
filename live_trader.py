@@ -7,16 +7,13 @@ import torch
 import numpy as np
 from stable_baselines3 import PPO
 
-# Check if API keys are provided as command-line arguments
-if len(sys.argv) != 3:
-    print("[FATAL] API Keys were not provided as command-line arguments.")
-    sys.exit(1) # Exit with an error code
+# Load API keys from environment variables
+access_key = os.getenv("UPBIT_ACCESS_KEY")
+secret_key = os.getenv("UPBIT_SECRET_KEY")
 
-access_key = sys.argv[1]
-secret_key = sys.argv[2]
-
-os.environ["UPBIT_ACCESS_KEY"] = access_key
-os.environ["UPBIT_SECRET_KEY"] = secret_key
+if not access_key or not secret_key:
+    print("[FATAL] API Keys (UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY) were not found in environment variables.")
+    sys.exit(1)
 
 
 # --- Local Module Imports ---
