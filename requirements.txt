@@ -8,3 +8,4 @@ stable-baselines3
 tensorboard
 pyupbit
 lightgbm
+google-generativeai
