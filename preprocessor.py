@@ -24,9 +24,12 @@ def preprocess_data(file_path: str, output_path: str):
     df_processed = generate_sideways_signals(df_processed)
 
     # 3. 시장 체제 자체를 피처로 추가 (숫자로 변환)
-    df_processed['regime_name'] = df_processed.apply(get_market_regime, axis=1)
-    regime_map = {name: i for i, name in enumerate(df_processed['regime_name'].unique())}
-    df_processed['regime'] = df_processed['regime_name'].map(regime_map)
+    daily_regime = df_processed.apply(get_market_regime, axis=1).rename('regime')
+    df_processed['regime'] = daily_regime.reindex(df_processed.index.date).set_axis(df_processed.index)
+    df_processed['regime'] = df_processed['regime'].ffill()
+
+    regime_map = {name: i for i, name in enumerate(df_processed['regime'].unique())}
+    df_processed['regime'] = df_processed['regime'].map(regime_map)
 
     # 4. RL 환경에 필요한 최종 피처 선택
     # OHLCV (5) + ADX, Norm_ATR, BBP, EMA_20, EMA_50, RSI, MACD_hist, regime (8) = 13 features
