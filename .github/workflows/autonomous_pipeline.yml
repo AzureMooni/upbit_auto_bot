@@ -69,6 +69,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
+          command_timeout: 20m
           script: |
             # 1. 어떤 명령이라도 실패하면 즉시 중단합니다.
             set -e
