@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from market_regime_detector import precompute_regime_indicators, get_regime_from_indicators
+from market_regime_detector import precompute_all_indicators, get_market_regime
 from strategies.trend_follower import generate_v_recovery_signals
 from strategies.mean_reversion_strategy import generate_sideways_signals
 
@@ -17,24 +17,16 @@ def preprocess_data(file_path: str, output_path: str):
     
     print("모든 기술적 지표와 시장 체제를 계산합니다...")
     # 1. 시장 체제 분석에 필요한 모든 지표 계산
-    df_processed = precompute_regime_indicators(df)
+    df_processed = precompute_all_indicators(df)
 
     # 2. V-회복 및 횡보장 전략 신호에 필요한 지표 추가 계산
     df_processed = generate_v_recovery_signals(df_processed)
     df_processed = generate_sideways_signals(df_processed)
 
     # 3. 시장 체제 자체를 피처로 추가 (숫자로 변환)
-    regime_map = {name: i for i, name in enumerate(df_processed.apply(
-        lambda row: get_regime_from_indicators(
-            close=row['close'], ema_20=row['EMA_20'], ema_50=row['EMA_50'], adx=row['ADX'],
-            normalized_atr=row['Normalized_ATR'], natr_ma=row['Normalized_ATR_MA']
-        ), axis=1).unique())}
-    
-    df_processed['regime'] = df_processed.apply(
-        lambda row: regime_map.get(get_regime_from_indicators(
-            close=row['close'], ema_20=row['EMA_20'], ema_50=row['EMA_50'], adx=row['ADX'],
-            normalized_atr=row['Normalized_ATR'], natr_ma=row['Normalized_ATR_MA']
-        )), axis=1)
+    df_processed['regime_name'] = df_processed.apply(get_market_regime, axis=1)
+    regime_map = {name: i for i, name in enumerate(df_processed['regime_name'].unique())}
+    df_processed['regime'] = df_processed['regime_name'].map(regime_map)
 
     # 4. RL 환경에 필요한 최종 피처 선택
     # OHLCV (5) + ADX, Norm_ATR, BBP, EMA_20, EMA_50, RSI, MACD_hist, regime (8) = 13 features
