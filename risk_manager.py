@@ -1,5 +1,15 @@
-
 import pandas as pd
+
+class RiskManager:
+    def calculate_kelly_fraction(self, win_rate: float, avg_profit: float, avg_loss: float) -> float:
+        if avg_loss == 0:
+            return 0.0
+        R = avg_profit / avg_loss
+        if R == 0:
+            return 0.0
+        W = win_rate
+        kelly_fraction = W - ((1 - W) / R)
+        return kelly_fraction
 
 def get_position_size_ratio(regime: str, normalized_atr: float, natr_ma: float) -> float:
     """
