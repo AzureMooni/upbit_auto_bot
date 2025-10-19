@@ -20,7 +20,7 @@ if not access_key or not secret_key:
 from trading_env_simple import SimpleTradingEnv
 from sentiment_analyzer import SentimentAnalyzer
 from core.exchange import UpbitService
-from preprocessor import DataPreprocessor
+from market_regime_detector import precompute_all_indicators
 from risk_control_tower import RiskControlTower
 from execution_engine_interface import UpbitExecutionEngine
 
@@ -154,7 +154,7 @@ class LiveTrader:
                     await asyncio.sleep(30)
                     continue
 
-                processed_df = DataPreprocessor.generate_features(target_df).select_dtypes(include=np.number).dropna()
+                processed_df = precompute_all_indicators(target_df)
                 if len(processed_df) < 50:
                     print("관측 데이터 부족")
                     await asyncio.sleep(60)
