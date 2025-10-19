@@ -13,9 +13,9 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          username: ubuntu
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            cd /home/ec2-user/upbit_auto_bot
+            cd /home/ubuntu/upbit_auto_bot
             chmod +x run_weekly_retraining.sh
             ./run_weekly_retraining.sh
