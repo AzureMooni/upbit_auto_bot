@@ -17,6 +17,7 @@ if not access_key or not secret_key:
 
 
 # --- Local Module Imports ---
+from universe_manager import get_top_10_coins
 from trading_env_simple import SimpleTradingEnv
 from sentiment_analyzer import SentimentAnalyzer
 from core.exchange import UpbitService
