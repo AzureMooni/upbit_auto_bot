@@ -14,7 +14,7 @@ class RiskControlTower:
             mdd_threshold (float): 서킷 브레이커가 발동하는 최대 낙폭 임계값. (기본값: -15%)
         """
         self.mdd_threshold = mdd_threshold
-        self.risk_manager = RiskManager()
+        self.risk_manager = RiskManager(half_kelly=True, max_position_pct=0.25)
         print(f"✅ AI 위험 관리 위원회 활성화. MDD 임계값: {self.mdd_threshold:.2%}")
 
     def check_mdd_circuit_breaker(self, portfolio_history: pd.Series) -> bool:
@@ -66,8 +66,9 @@ class RiskControlTower:
             float: 최종적으로 결정된 투자 자본 비율 (0.0 ~ 1.0).
         """
         # 1. 켈리 비율 계산
-        kelly_fraction = self.risk_manager.calculate_kelly_fraction(
-            win_rate, avg_profit, avg_loss
+        win_loss_ratio = avg_profit / avg_loss if avg_loss > 0 else 1.0
+        kelly_fraction = self.risk_manager.get_position_size_pct(
+            win_rate, win_loss_ratio
         )
         if kelly_fraction <= 0:
             print("  - [RCT] 켈리 비율 <= 0. 통계적 우위가 없어 투자를 중단합니다.")
