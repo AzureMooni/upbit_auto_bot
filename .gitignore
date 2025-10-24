@@ -29,14 +29,14 @@ Thumbs.db
 # --- Project Specific --- #
 
 # Data & Models (Large or sensitive files)
-*.pkl
-*.h5
-*.joblib
-*.csv
-*.zip
-*.json
-/models/
-/data/
+# *.pkl
+# *.h5
+# *.joblib
+# *.csv
+# *.zip
+# *.json
+# /models/
+# /data/
 
 # Logs
 logs/
