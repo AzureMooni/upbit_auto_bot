@@ -9,4 +9,3 @@ tensorboard
 pyupbit
 lightgbm
 google-generativeai
-tensorflow-metal
