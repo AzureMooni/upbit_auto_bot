@@ -23,15 +23,11 @@ RUN pip install pyupbit
 # Install TensorFlow for the Linux container environment
 RUN pip install --no-cache-dir tensorflow
 
+# Run the training script to generate model files INSIDE the image
+RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
+
 # Copy the rest of the application code
 COPY . .
-
-# [추가] AI 모델 및 필수 데이터 파일을 이미지에 복사합니다.
-# 'models' 디렉토리와 'data' 디렉토리가 있다고 가정합니다.
-# 만약 파일/폴더 이름이 다르다면 이 부분을 수정해야 합니다.
-COPY models/ /app/models/
-COPY data/ /app/data/
-COPY specialist_stats.json /app/specialist_stats.json
 
 # Create a non-root user to run the application
 RUN useradd -ms /bin/bash appuser

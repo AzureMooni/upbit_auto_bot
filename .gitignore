@@ -29,16 +29,14 @@ Thumbs.db
 # --- Project Specific --- #
 
 # Data & Models (Large or sensitive files)
-# *.pkl
-# *.h5
-# *.joblib
-# *.csv
-!/data/retraining_sets/missed_opportunity_*.csv # Allow only specific CSVs if needed, but generally ignore
-
-# Explicitly include models, data, and specialist_stats.json
-!models/
-!data/
-!specialist_stats.json
+*.pkl
+*.h5
+*.joblib
+*.csv
+*.zip
+*.json
+/models/
+/data/
 
 # Logs
 logs/
