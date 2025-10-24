@@ -23,11 +23,11 @@ RUN pip install pyupbit
 # Install TensorFlow for the Linux container environment
 RUN pip install --no-cache-dir tensorflow
 
-# Run the training script to generate model files INSIDE the image
-RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
-
 # Copy the rest of the application code
 COPY . .
+
+# Run the training script to generate model files INSIDE the image
+RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # Create a non-root user to run the application
 RUN useradd -ms /bin/bash appuser
