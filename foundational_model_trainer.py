@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import shutil
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
@@ -16,8 +17,22 @@ def train_foundational_agent(total_timesteps=100000):
     """
     Trains the foundational PPO agent on the preprocessed data.
     """
+    if os.path.exists(LOG_DIR):
+        print(f"기존 로그 디렉토리 {LOG_DIR}를 삭제합니다.")
+        shutil.rmtree(LOG_DIR)
+    os.makedirs(LOG_DIR, exist_ok=True)
+
     print("전처리된 캐시 데이터를 불러옵니다...")
-    df = pd.read_pickle(DATA_PATH)
+    all_data = pd.read_pickle(DATA_PATH)
+
+    # Concatenate all dataframes into a single dataframe for foundational model training
+    # Assuming all_data is a dictionary of {ticker: dataframe}
+    if isinstance(all_data, dict) and all_data:
+        df = pd.concat(all_data.values(), ignore_index=False)
+        df.sort_index(inplace=True) # Ensure chronological order
+    else:
+        print("오류: 전처리된 데이터가 비어 있거나 예상 형식이 아닙니다.")
+        return
 
     print("거래 환경을 설정합니다...")
     env = TradingEnv(df, lookback_window=LOOKBACK_WINDOW)
@@ -49,5 +64,4 @@ def train_foundational_agent(total_timesteps=100000):
     model.save(MODEL_SAVE_PATH)
 
 if __name__ == "__main__":
-    os.makedirs(LOG_DIR, exist_ok=True)
     train_foundational_agent(total_timesteps=150000)

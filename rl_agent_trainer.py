@@ -1,4 +1,6 @@
 import os
+import shutil
+import pandas as pd
 from stable_baselines3 import PPO
 from preprocessor import DataPreprocessor
 from rl_environment import PortfolioTradingEnv
@@ -20,13 +22,18 @@ class RLAgentTrainer:
     def _load_all_data(self) -> dict | None:
         """훈련을 위해 모든 타겟 코인의 전처리된 데이터를 불러옵니다."""
         print("모든 타겟 코인의 데이터 로딩 중...")
-        all_data = {}
-        for ticker in self.target_coins:
-            df = self.preprocessor.load_and_preprocess_single_coin(ticker, "1h")
-            if df is not None and not df.empty:
-                all_data[ticker] = df
-            else:
-                print(f"{ticker}의 데이터를 로드할 수 없어 훈련에서 제외됩니다.")
+        
+        # Ensure preprocessed_data.pkl is up-to-date
+        # This will call the run method of DataPreprocessor, which handles caching
+        self.preprocessor.run() 
+
+        # Load the combined preprocessed data
+        data_path = os.path.join(self.preprocessor.cache_dir, "preprocessed_data.pkl")
+        if not os.path.exists(data_path):
+            print(f"오류: 전처리된 데이터 파일 '{data_path}'을 찾을 수 없습니다.")
+            return None
+        
+        all_data = pd.read_pickle(data_path)
 
         if not all_data or len(all_data) < len(self.target_coins):
             print("훈련에 사용할 데이터가 충분하지 않습니다. 프로세스를 중단합니다.")
@@ -38,6 +45,12 @@ class RLAgentTrainer:
         """
         포트폴리오 관리 RL 에이전트를 훈련합니다.
         """
+        log_dir = "./portfolio_rl_tensorboard_logs/"
+        if os.path.exists(log_dir):
+            print(f"기존 로그 디렉토리 {log_dir}를 삭제합니다.")
+            shutil.rmtree(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
+
         print("포트폴리오 RL 에이전트 훈련을 시작합니다...")
 
         # 1. 모든 코인에 대한 데이터 로드
@@ -54,7 +67,7 @@ class RLAgentTrainer:
             "MultiInputPolicy",
             env,
             verbose=1,
-            tensorboard_log="./portfolio_rl_tensorboard_logs/",
+            tensorboard_log=log_dir,
         )
 
         # 4. 모델 훈련

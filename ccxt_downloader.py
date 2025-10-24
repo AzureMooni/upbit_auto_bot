@@ -8,58 +8,68 @@ import argparse
 # 고빈도 스캘핑을 위한 타겟 코인 목록
 SCALPING_TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW"]
 
+class CCXTDataDownloader:
+    def __init__(self, limit: int = 200):
+        self.exchange = ccxt.upbit()
+        self.data_dir = "data"
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir)
+        self.limit = limit
 
-def download_ohlcv_data(
-    start_date_str: str,
-    end_date_str: str,
-    tickers: list = None,
-    timeframe: str = "1m",
-    limit: int = 200,
-):
-    if tickers is None:
-        tickers = SCALPING_TARGET_COINS
+    def download_ohlcv(
+        self,
+        ticker: str,
+        timeframe: str,
+        start_date_str: str = None,
+        end_date_str: str = None,
+    ) -> pd.DataFrame | None:
+        """
+        Downloads OHLCV data for a given ticker and timeframe.
+        If start_date_str and end_date_str are not provided, it tries to download all available data.
+        """
+        if start_date_str is None:
+            start_date_str = "2017-01-01" # Default to a very early date if not provided
+        if end_date_str is None:
+            end_date_str = datetime.now().strftime("%Y-%m-%d")
 
-    exchange = ccxt.upbit()
-    data_dir = "data"
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-
-    end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
-    timeframe_duration_ms = exchange.parse_timeframe(timeframe) * 1000
-
-    for ticker in tickers:
         print(
             f"Downloading {ticker} {timeframe} data from {start_date_str} to {end_date_str}..."
         )
 
-        filename = ticker.replace("/", "_") + f"_{timeframe}.csv"
-        filepath = os.path.join(data_dir, filename)
+        filename = ticker.replace("/", "_") + f"_{timeframe}.feather" # Changed to feather for performance
+        filepath = os.path.join(self.data_dir, filename)
 
-        since_timestamp = exchange.parse8601(start_date_str + "T00:00:00Z")
+        since_timestamp = self.exchange.parse8601(start_date_str + "T00:00:00Z")
+        timeframe_duration_ms = self.exchange.parse_timeframe(timeframe) * 1000
+
+        all_ohlcv = []
+
+        # Load existing data if available
+        existing_df = pd.DataFrame()
         if os.path.exists(filepath):
             try:
-                existing_df = pd.read_csv(
-                    filepath, index_col="timestamp", parse_dates=True
-                )
+                existing_df = pd.read_feather(filepath)
+                existing_df["timestamp"] = pd.to_datetime(existing_df["timestamp"])
+                existing_df.set_index("timestamp", inplace=True)
                 if not existing_df.empty:
                     since_timestamp = (
                         int(existing_df.index[-1].timestamp() * 1000)
                         + timeframe_duration_ms
                     )
                     print(
-                        f"  기존 데이터 발견. 마지막 시간: {existing_df.index[-1]}. 다운로드를 이어갑니다..."
+                        f"  Existing data found. Last timestamp: {existing_df.index[-1]}. Resuming download..."
                     )
             except Exception as e:
                 print(
-                    f"  기존 파일({filepath})을 읽는 중 오류 발생: {e}. 처음부터 다시 다운로드합니다."
+                    f"  Error reading existing file({filepath}): {e}. Downloading from scratch."
                 )
 
-        all_ohlcv = []
+        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
 
-        while since_timestamp < exchange.parse8601(end_date_str + "T00:00:00Z"):
+        while since_timestamp < self.exchange.parse8601(end_date_str + "T00:00:00Z"):
             try:
-                ohlcv = exchange.fetch_ohlcv(
-                    ticker, timeframe, since=since_timestamp, limit=limit
+                ohlcv = self.exchange.fetch_ohlcv(
+                    ticker, timeframe, since=since_timestamp, limit=self.limit
                 )
                 if not ohlcv:
                     break
@@ -80,60 +90,28 @@ def download_ohlcv_data(
                 break
 
         if all_ohlcv:
-            df = pd.DataFrame(
+            new_df = pd.DataFrame(
                 all_ohlcv,
                 columns=["timestamp", "open", "high", "low", "close", "volume"],
             )
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-            df.set_index("timestamp", inplace=True)
-            df = df[~df.index.duplicated(keep="first")]
-            df = df[df.index <= end_dt + timedelta(days=1, microseconds=-1)]
+            new_df["timestamp"] = pd.to_datetime(new_df["timestamp"], unit="ms")
+            new_df.set_index("timestamp", inplace=True)
+            new_df = new_df[~new_df.index.duplicated(keep="first")]
+            new_df = new_df[new_df.index <= end_dt + timedelta(days=1, microseconds=-1)]
 
-            if os.path.exists(filepath):
-                try:
-                    existing_df = pd.read_csv(
-                        filepath, index_col="timestamp", parse_dates=True
-                    )
-                    df = pd.concat([existing_df, df])
-                    df = df[~df.index.duplicated(keep="last")]
-                    df.sort_index(inplace=True)
-                    print("  기존 데이터와 병합 완료.")
-                except Exception as e:
-                    print(
-                        f"  기존 파일과 병합 중 오류 발생: {e}. 새 데이터만 저장합니다."
-                    )
+            if not existing_df.empty:
+                df = pd.concat([existing_df, new_df])
+                df = df[~df.index.duplicated(keep="last")]
+                df.sort_index(inplace=True)
+                print("  Merged with existing data.")
+            else:
+                df = new_df
 
-            df.to_csv(filepath)
+            df.reset_index().to_feather(filepath) # Save as feather
             print(
-                f"성공적으로 {ticker} 데이터를 {filepath}에 저장/업데이트했습니다. 총 {len(df)}개의 데이터."
+                f"Successfully saved/updated {ticker} data to {filepath}. Total {len(df)} data points."
             )
+            return df
         else:
             print(f"No new data downloaded for {ticker}.")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Download OHLCV data from Upbit for scalping."
-    )
-    parser.add_argument(
-        "--start-date", type=str, required=True, help="Start date in YYYY-MM-DD format."
-    )
-    parser.add_argument(
-        "--end-date", type=str, required=True, help="End date in YYYY-MM-DD format."
-    )
-    parser.add_argument(
-        "--tickers",
-        nargs="+",
-        help=f"List of tickers to download. Defaults to {SCALPING_TARGET_COINS}",
-    )
-    parser.add_argument(
-        "--timeframe",
-        type=str,
-        default="1m",
-        help="Timeframe to download (e.g., 1m, 5m, 1h, 1d).",
-    )
-    args = parser.parse_args()
-
-    download_ohlcv_data(
-        args.start_date, args.end_date, tickers=args.tickers, timeframe=args.timeframe
-    )
+            return existing_df if not existing_df.empty else None # Return existing data if no new data

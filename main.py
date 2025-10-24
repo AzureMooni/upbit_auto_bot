@@ -5,10 +5,11 @@ os.environ['OMP_NUM_THREADS'] = '1' # Limit OpenMP threads
 
 import argparse
 import asyncio
+import shutil
 from dotenv import load_dotenv
 
 # --- New High-Frequency System Modules --- #
-from ccxt_downloader import download_ohlcv_data
+from ccxt_downloader import CCXTDataDownloader, SCALPING_TARGET_COINS
 from preprocessor import DataPreprocessor
 from model_trainer import ModelTrainer
 from live_trader import LiveTrader
@@ -59,8 +60,11 @@ async def main():
         default=50000,
         help="Initial capital for trading or backtesting.",
     )
-    parser.add_argument("--model-path", type=str, help="Path to the model file for validation.")
+    parser.add_argument(
+        "--model-path", type=str, help="Path to the model file for validation."
+    )
     parser.add_argument("--output-path", type=str, help="Path to save the validation results JSON.")
+    parser.add_argument("--clear-cache", action="store_true", help="Clear the cache directory before preprocessing data.")
 
     args = parser.parse_args()
 
@@ -72,13 +76,23 @@ async def main():
     # --- Mode Execution --- #
     if args.mode == "download":
         print("📥 Downloading 1-minute data...")
-        download_ohlcv_data(
-            args.start_date, args.end_date, tickers=args.tickers, timeframe="1m"
-        )
+        downloader = CCXTDataDownloader()
+        if args.tickers is None:
+            args.tickers = SCALPING_TARGET_COINS # Use default if not provided
+        for ticker in args.tickers:
+            downloader.download_ohlcv(
+                ticker, "1m", args.start_date, args.end_date
+            )
 
     elif args.mode == "preprocess":
         print("⚙️ Preprocessing 1-minute data...")
         preprocessor = DataPreprocessor(target_coins=args.tickers)
+        if args.clear_cache:
+            cache_dir = preprocessor.cache_dir
+            if os.path.exists(cache_dir):
+                print(f"기존 캐시 디렉토리 {cache_dir}를 삭제합니다.")
+                shutil.rmtree(cache_dir)
+            os.makedirs(cache_dir, exist_ok=True) # Recreate the cache directory
         preprocessor.run()
 
     elif args.mode == "train":

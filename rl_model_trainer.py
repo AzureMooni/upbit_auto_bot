@@ -1,4 +1,5 @@
 import os
+import shutil
 import pandas as pd
 import numpy as np
 from stable_baselines3 import PPO
@@ -23,6 +24,11 @@ class RLModelTrainer:
         """
         PPO 알고리즘을 사용하여 강화학습 에이전트를 훈련합니다.
         """
+        if os.path.exists(self.tensorboard_log_path):
+            print(f"기존 로그 디렉토리 {self.tensorboard_log_path}를 삭제합니다.")
+            shutil.rmtree(self.tensorboard_log_path)
+        os.makedirs(self.tensorboard_log_path, exist_ok=True)
+
         print(f"🤖 {ticker}에 대한 강화학습 에이전트 훈련을 시작합니다...")
 
         # 1. 데이터 로드

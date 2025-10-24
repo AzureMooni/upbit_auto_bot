@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from stable_baselines3 import PPO
 import os
+import shutil
 from trading_env_simple import SimpleTradingEnv
 
 
@@ -65,7 +66,12 @@ def train_specialists(
             custom_objects={"learning_rate": 0.0001, "n_steps": 2048},
         )
 
-        model.tensorboard_log = f"./{regime.lower()}_specialist_logs/"
+        log_dir = f"./{regime.lower()}_specialist_logs/"
+        if os.path.exists(log_dir):
+            print(f"기존 로그 디렉토리 {log_dir}를 삭제합니다.")
+            shutil.rmtree(log_dir)
+
+        model.tensorboard_log = log_dir
         model.learn(total_timesteps=total_timesteps_per_specialist, tb_log_name="PPO")
 
         specialist_model_name = f"{regime.lower()}_market_agent.zip"
