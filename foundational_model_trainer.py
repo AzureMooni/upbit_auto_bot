@@ -6,6 +6,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
 
 from rl_environment import TradingEnv
+from preprocessor import DataPreprocessor
 
 # --- Constants ---
 LOOKBACK_WINDOW = 50
@@ -23,6 +24,10 @@ def train_foundational_agent(total_timesteps=100000):
     os.makedirs(LOG_DIR, exist_ok=True)
 
     print("전처리된 캐시 데이터를 불러옵니다...")
+    # Run preprocessing to ensure preprocessed_data.pkl is created
+    preprocessor = DataPreprocessor()
+    preprocessor.run()
+
     all_data = pd.read_pickle(DATA_PATH)
 
     # Concatenate all dataframes into a single dataframe for foundational model training

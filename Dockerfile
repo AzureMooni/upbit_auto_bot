@@ -23,6 +23,8 @@ RUN pip install pyupbit
 # Install TensorFlow for the Linux container environment
 RUN pip install --no-cache-dir tensorflow
 
+RUN mkdir -p /app/cache
+
 # Copy the rest of the application code
 COPY . .
 
