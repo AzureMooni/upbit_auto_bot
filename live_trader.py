@@ -1,3 +1,8 @@
+import os
+import glob
+from foundational_model_trainer import train_foundational_agent
+from universe_manager import get_top_10_coins
+from preprocessor import DataPreprocessor
 import sys
 import asyncio
 import pandas as pd
@@ -73,7 +78,20 @@ class LiveTrader:
                 self.agents[regime] = PPO.load(model_path, env=dummy_env)
 
         if not self.agents:
-            raise Exception("오류: 어떤 전문가 AI 모델도 로드할 수 없습니다.")
+            print('--- 경고: 훈련된 AI 모델을 찾을 수 없습니다. ---')
+            print('--- 최초 1회 훈련을 시작합니다... (최대 20분 소요) ---')
+
+            # DUMMY 키를 설정하여 훈련 스크립트 실행
+            os.environ['UPBIT_ACCESS_KEY'] = 'DUMMY_KEY'
+            os.environ['UPBIT_SECRET_KEY'] = 'DUMMY_KEY'
+
+            # 훈련 실행
+            train_foundational_agent(total_timesteps=150000)
+
+            print('--- 훈련 완료! 에이전트를 다시 로드합니다. ---')
+            self._load_agents() # 훈련 후 다시 로드
+            if not self.agents:
+                raise Exception('오류: 훈련을 완료했으나, 여전히 AI 모델을 로드할 수 없습니다.')
 
     def _init_analyzer(self):
         print("\n- Gemini 정보 분석가를 준비합니다...")
