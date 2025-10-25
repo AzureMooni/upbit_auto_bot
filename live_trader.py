@@ -65,20 +65,22 @@ class LiveTrader:
         self.portfolio_history[pd.Timestamp.now()] = initial_net_worth
         print("✅ 시스템 초기화 완료.")
 
-    def _load_agents(self):
+def _load_agents(self):
         print("\n- 훈련된 전문가 AI 에이전트들을 로드합니다...")
         regimes = ['Bullish', 'Bearish', 'Sideways']
-        dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
-        dummy_env = SimpleTradingEnv(dummy_df)
+        model_path = "foundational_agent.zip"
 
-        for regime in regimes:
-            model_path = f"{regime.lower()}_market_agent.zip"
-            if os.path.exists(model_path):
-                print(f"  - [{regime}] 전문가 AI 로드 완료.")
-                self.agents[regime] = PPO.load(model_path, env=dummy_env)
+        # Create a dummy env for loading (assuming SimpleTradingEnv is defined)
+        try:
+            dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
+            dummy_env = SimpleTradingEnv(dummy_df)
+        except Exception as e:
+            print(f"[DEBUG] Dummy env creation skipped in _load_agents: {e}")
+            dummy_env = None # Trainer will create its own env
 
-        if not self.agents:
-            print('--- 경고: 훈련된 AI 모델을 찾을 수 없습니다. ---')
+        # 1. 'Train on First Boot' Logic
+        if not os.path.exists(model_path):
+            print(f'--- 경고: 훈련된 AI 모델({model_path})을 찾을 수 없습니다. ---')
             print('--- 최초 1회 훈련을 시작합니다... (최대 20분 소요) ---')
 
             # DUMMY 키를 설정하여 훈련 스크립트 실행
@@ -86,12 +88,19 @@ class LiveTrader:
             os.environ['UPBIT_SECRET_KEY'] = 'DUMMY_KEY'
 
             # 훈련 실행
-            train_foundational_agent(total_timesteps=150000)
-
+            train_foundational_agent(total_timesteps=150000) # (훈련 시간)
             print('--- 훈련 완료! 에이전트를 다시 로드합니다. ---')
-            self._load_agents() # 훈련 후 다시 로드
-            if not self.agents:
-                raise Exception('오류: 훈련을 완료했으나, 여전히 AI 모델을 로드할 수 없습니다.')
+
+        # 2. Load the single foundational model
+        if os.path.exists(model_path):
+            print(f"  - [Foundational] {model_path} 로드 완료.")
+            foundational_model = PPO.load(model_path, env=dummy_env)
+            # Assign the SAME foundational model to ALL regimes
+            for regime in regimes:
+                self.agents[regime] = foundational_model
+            print(f"  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.")
+        else:
+            raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_path})을 생성하지 못했습니다.')
 
     def _init_analyzer(self):
         print("\n- Gemini 정보 분석가를 준비합니다...")

@@ -21,7 +21,7 @@ class UpbitService:
         ccxt 라이브러리를 사용하여 업비트 거래소 객체를 초기화하고 인증을 완료합니다.
         """
         self.exchange = ccxt.upbit(
-            {  # Changed to ccxt.upbit.pro
+            {
                 "apiKey": self.access_key,
                 "secret": self.secret_key,
                 "options": {
