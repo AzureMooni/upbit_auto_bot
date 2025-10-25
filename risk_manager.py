@@ -1,4 +1,4 @@
-import math
+ import math
 
 class RiskManager: """ Calculates the optimal position size based on the Kelly Criterion, applying safety constraints. """ def init(self, half_kelly=True, max_position_pct=0.25): self.half_kelly = half_kelly self.max_position_pct = max_position_pct
 
