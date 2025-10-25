@@ -31,13 +31,5 @@ COPY . .
 # Run the training script to generate model files INSIDE the image
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
-# Create a non-root user to run the application
-RUN useradd -ms /bin/bash appuser
-USER appuser
-WORKDIR /home/appuser/app
-
-# Re-copy files with correct ownership
-COPY --chown=appuser:appuser . .
-
 # Define the command to run your app
 ENTRYPOINT ["python", "live_trader.py"]
