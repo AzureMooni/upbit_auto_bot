@@ -1,5 +1,4 @@
 import sys 
-from dotenv import load_dotenv 
 import os 
 import asyncio 
 import pandas as pd 
@@ -26,13 +25,14 @@ except (ImportError, NameError) as e:
     print(traceback.format_exc()) 
     sys.exit(1)
 
-# --- 1. Load API Keys from .env file ---
-load_dotenv() # .env 파일에서 환경 변수를 로드합니다.
-access_key = os.getenv('UPBIT_ACCESS_KEY')
-secret_key = os.getenv('UPBIT_SECRET_KEY')
-if not access_key or not secret_key:
-    print('[FATAL] UPBIT_ACCESS_KEY or UPBIT_SECRET_KEY not found in .env file.')
-    sys.exit(1) 
+# --- 1. Load API Keys from Command-Line Arguments ---
+if len(sys.argv) != 3: 
+    print('[FATAL] API Keys were not provided as command-line arguments.') 
+    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>') 
+    sys.exit(1)
+
+access_key = sys.argv[1] 
+secret_key = sys.argv[2] 
 print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
 
 # --- 2. Live Trader Class Definition ---

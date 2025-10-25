@@ -52,3 +52,52 @@ jobs:
         run: |
           docker build --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  # ===============================================
+  # 작업 2: EC2 서버에 최신 버전 배포
+  # ===============================================
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build-and-push # 'build-and-push' 작업이 성공해야만 이 작업이 시작됩니다.
+
+    steps:
+      # 1. EC2 서버에 SSH로 접속하여 배포 스크립트를 실행합니다.
+      - name: Deploy to EC2 instance
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          command_timeout: 20m
+          script: |
+            # 1. 어떤 명령이라도 실패하면 즉시 중단합니다.
+            set -e
+
+            # 2. EC2에 부여된 IAM 역할을 사용하여 AWS ECR에 로그인합니다.
+            echo "Logging in to Amazon ECR..."
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+            # 3. 이전에 실행 중이던 컨테이너가 있다면 중지하고 삭제합니다.
+            echo "Stopping and removing old container..."
+            docker stop upbit-bot || true
+            docker rm upbit-bot || true
+
+            # 4. ECR에서 최신 버전의 Docker 이미지를 내려받습니다.
+            echo "Pulling latest image from ECR..."
+            docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+            # 5. 최신 이미지를 사용하여 새 컨테이너를 실행하고, API 키를 환경 변수로 안전하게 전달합니다.
+            echo "Starting new container with API keys as environment variables..."
+            docker run -d \
+              --name upbit-bot \
+              --restart always \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
+              "${{ secrets.UPBIT_ACCESS_KEY }}" \
+              "${{ secrets.UPBIT_SECRET_KEY }}"
+
+            # 6. 사용하지 않는 오래된 Docker 이미지를 정리하여 디스크 공간을 확보합니다.
+            echo "Cleaning up old images..."
+            docker image prune -af
+
+            echo "Deployment successful!"
