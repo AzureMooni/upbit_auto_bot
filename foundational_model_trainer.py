@@ -5,6 +5,10 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
 
+from preprocessor import DataPreprocessor
+from data_fetcher import DataFetcher
+import os
+
 from rl_environment import TradingEnv
 from preprocessor import DataPreprocessor
 
@@ -25,8 +29,10 @@ def train_foundational_agent(total_timesteps=100000):
 
     print("전처리된 캐시 데이터를 불러옵니다...")
     # Run preprocessing to ensure preprocessed_data.pkl is created
-    preprocessor = DataPreprocessor()
-    preprocessor.run()
+    fetcher = DataFetcher()
+    all_raw_data = fetcher.load_all_data_from_disk_or_api() # 데이터 로드
+    preprocessor = DataPreprocessor(all_raw_data)
+    all_data = preprocessor.run_and_save_to_pickle(DATA_PATH) # 전처리 실행 및 .pkl 파일 저장
 
     all_data = pd.read_pickle(DATA_PATH)
 
