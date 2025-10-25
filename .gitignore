@@ -47,3 +47,6 @@ foundational_rl_tensorboard_logs/
 
 # Exclude specific temp files if any
 commit_message*.txt
+
+# Environment files
+.env
