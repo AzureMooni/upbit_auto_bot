@@ -5,10 +5,6 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
 
-from preprocessor import DataPreprocessor
-from data_fetcher import DataFetcher
-import os
-
 from rl_environment import TradingEnv
 from preprocessor import DataPreprocessor
 
@@ -27,20 +23,12 @@ def train_foundational_agent(total_timesteps=100000):
         shutil.rmtree(LOG_DIR)
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    # 1. 원본 데이터 로드
-    fetcher = DataFetcher(data_dir='data')
-    all_data = fetcher.load_all_data()
+    print("전처리된 캐시 데이터를 불러옵니다...")
+    # Run preprocessing to ensure preprocessed_data.pkl is created
+    preprocessor = DataPreprocessor()
+    preprocessor.run()
 
-    # 2. 데이터 전처리 및 캐시 파일 생성
-    print('데이터 전처리 중...')
-    preprocessor = DataPreprocessor(all_data)
-    preprocessor.create_features_and_labels()
-    all_data = preprocessor.get_processed_data()
-
-    # 3. 캐시 디렉토리 생성 및 데이터 저장
-    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-    all_data.to_pickle(DATA_PATH)
-    print(f'전처리된 데이터 {DATA_PATH}에 저장 완료.')
+    all_data = pd.read_pickle(DATA_PATH)
 
     # Concatenate all dataframes into a single dataframe for foundational model training
     # Assuming all_data is a dictionary of {ticker: dataframe}
