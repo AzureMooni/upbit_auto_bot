@@ -28,7 +28,7 @@ RUN mkdir -p /app/cache
 # Copy the rest of the application code
 COPY . .
 
-# Run the data fetch/preprocess/train pipeline to generate models
+# Run the training script to generate model files INSIDE the image
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # Define the command to run your app
