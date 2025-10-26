@@ -13,22 +13,16 @@ WORKDIR /app
 # 4. Install Python Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# --- Proactive Fix for TypeError ---
 RUN pip install pyjwt==2.3.0
 RUN pip install pyupbit
-# --- End of Fix ---
 RUN pip install --no-cache-dir tensorflow
 
 # 5. Copy ALL Application Code
 COPY . .
 
-# 6. --- Build-Time Training (The Fix) ---
-# Create cache directory (fixes FileNotFoundError in preprocessor)
+# 6. Build-Time Training (Fixes File Not Found)
 RUN mkdir -p /app/cache
-
-# Run the trainer to fetch, preprocess, and train, generating all .pkl, .zip, and .json files
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
-# 7. Final Entrypoint
-ENTRYPOINT ["python", "live_trader.py"]
+# 7. Final Command
+CMD ["python", "live_trader.py"]

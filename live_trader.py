@@ -1,12 +1,11 @@
 import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
 from stable_baselines3 import PPO
+from dotenv import load_dotenv
 
 # --- Core Module Imports ---
-# This block fixes all previous ModuleNotFound/ImportErrors
 try:
     from universe_manager import get_top_10_coins
-    # Do NOT import the trainer here
-    from preprocessor import DataPreprocessor
+    from foundational_model_trainer import train_foundational_agent, MODEL_SAVE_PATH
     from trading_env_simple import SimpleTradingEnv
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
@@ -18,13 +17,15 @@ except ImportError as e:
     print(traceback.format_exc())
     sys.exit(1)
 
-# --- 1. Load API Keys from Command-Line Arguments ---
-if len(sys.argv) != 3:
-    print('[FATAL] API Keys were not provided as command-line arguments.')
-    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
+# --- 1. Load API Keys from .env file ---
+load_dotenv()
+access_key = os.getenv('UPBIT_ACCESS_KEY')
+secret_key = os.getenv('UPBIT_SECRET_KEY')
+
+if not access_key or not secret_key:
+    print('[FATAL] UPBIT_ACCESS_KEY or UPBIT_SECRET_KEY not found in .env file.')
+    print('Please create a .env file on the server.')
     sys.exit(1)
-access_key = sys.argv[1]
-secret_key = sys.argv[2]
 print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
 
 # --- 2. Live Trader Class Definition ---
@@ -50,30 +51,34 @@ class LiveTrader:
 
     def _load_agents(self):
         print("\n- 훈련된 전문가 AI 에이전트들을 로드합니다...")
-        # This is the model file created by foundational_model_trainer.py
-        model_path = 'foundational_agent.zip'
+        model_path = MODEL_SAVE_PATH # 'foundational_agent.zip'
         
         if not os.path.exists(model_path):
-            print(f'[FATAL] 치명적 오류: 모델 파일({model_path})이 없습니다.')
-            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-            # This is a fatal error, the container must stop.
-            raise Exception(f'Model file not found: {model_path}')
+            print(f'--- 경고: 훈련된 AI 모델({model_path})을 찾을 수 없습니다. ---')
+            print('--- 최초 1회 훈련을 시작합니다... (최대 20분 소요) ---')
+            try:
+                train_foundational_agent(total_timesteps=150000)
+            except Exception as e:
+                print('[FATAL] 훈련 중 치명적인 오류 발생:')
+                print(traceback.format_exc())
+                raise e
+            print('--- 훈련 완료! 에이전트를 다시 로드합니다. ---')
 
-        try:
-            # Create a dummy env for loading
-            dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
-            dummy_env = SimpleTradingEnv(dummy_df)
-        except Exception as e:
-            print(f'[WARN] Dummy env for loading failed: {e}')
-            dummy_env = None # Load without env if SimpleTradingEnv is the issue
+        if os.path.exists(model_path):
+            try:
+                dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
+                dummy_env = SimpleTradingEnv(dummy_df)
+            except Exception: dummy_env = None
 
-        print(f'  - [Foundational] {model_path} 로드 시도...')
-        foundational_model = PPO.load(model_path, env=dummy_env)
-        
-        regimes = ['Bullish', 'Bearish', 'Sideways']
-        for regime in regimes:
-            self.agents[regime] = foundational_model
-        print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
+            print(f'  - [Foundational] {model_path} 로드 시도...')
+            foundational_model = PPO.load(model_path, env=dummy_env)
+            
+            regimes = ['Bullish', 'Bearish', 'Sideways']
+            for regime in regimes:
+                self.agents[regime] = foundational_model
+            print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
+        else:
+            raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_path})을 생성하지 못했습니다.')
 
     def _init_analyzer(self):
         print('\n- Gemini 정보 분석가를 준비합니다...')
@@ -108,7 +113,7 @@ class LiveTrader:
 
         for ticker, balance_info in all_balances.items():
             if balance_info['balance'] > 0:
-                market_ticker = f'KRW-{ticker}'
+                market_ticker = f'KRW-{ticker}' 
                 current_price = await self.upbit_service.get_current_price(market_ticker)
                 if current_price:
                     total_asset_value += balance_info['balance'] * current_price
