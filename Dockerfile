@@ -10,25 +10,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file
+# Copy the requirements file first to leverage Docker cache
 COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# [추가] Install specific library versions for compatibility
-RUN pip install pyjwt==2.3.0
-RUN pip install pyupbit
-
-# Install TensorFlow for the Linux container environment
-RUN pip install --no-cache-dir tensorflow
-
-RUN mkdir -p /app/cache
-
-# Copy the rest of the application code
+# Now copy all the application code
 COPY . .
 
-# Run the data fetch/preprocess/train pipeline to generate models
+# --- Build-Time Training ---
+# Run the complete data pipeline inside the build to generate all files
+RUN mkdir -p /app/cache
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # Define the command to run your app
