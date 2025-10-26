@@ -1,28 +1,34 @@
-# Use an official Python runtime as a parent image
+# 1. Base Image
 FROM python:3.11-slim
 
-# Set the working directory in the container
-WORKDIR /app
-
-# Install system dependencies required for build and runtime
+# 2. System Dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file first to leverage Docker cache
-COPY requirements.txt .
+# 3. Working Directory
+WORKDIR /app
 
-# Install Python dependencies
+# 4. Install Python Dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Now copy all the application code
+# --- Proactive Fix for TypeError ---
+RUN pip install pyjwt==2.3.0
+RUN pip install pyupbit
+# --- End of Fix ---
+RUN pip install --no-cache-dir tensorflow
+
+# 5. Copy ALL Application Code
 COPY . .
 
-# --- Build-Time Training ---
-# Run the complete data pipeline inside the build to generate all files
+# 6. --- Build-Time Training (The Fix) ---
+# Create cache directory (fixes FileNotFoundError in preprocessor)
 RUN mkdir -p /app/cache
+
+# Run the trainer to fetch, preprocess, and train, generating all .pkl, .zip, and .json files
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
-# Define the command to run your app
+# 7. Final Entrypoint
 ENTRYPOINT ["python", "live_trader.py"]
