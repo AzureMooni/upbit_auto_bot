@@ -1,11 +1,10 @@
 import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
 from stable_baselines3 import PPO
-from dotenv import load_dotenv
 
 # --- Core Module Imports ---
 try:
     from universe_manager import get_top_10_coins
-    from foundational_model_trainer import train_foundational_agent, MODEL_SAVE_PATH
+    from foundational_model_trainer import MODEL_SAVE_PATH
     from trading_env_simple import SimpleTradingEnv
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
@@ -17,28 +16,26 @@ except ImportError as e:
     print(traceback.format_exc())
     sys.exit(1)
 
-# --- 1. Load API Keys from .env file ---
-load_dotenv()
-access_key = os.getenv('UPBIT_ACCESS_KEY')
-secret_key = os.getenv('UPBIT_SECRET_KEY')
-
-if not access_key or not secret_key:
-    print('[FATAL] UPBIT_ACCESS_KEY or UPBIT_SECRET_KEY not found in .env file.')
-    print('Please create a .env file on the server.')
+# --- 1. Load API Keys from Command-Line Arguments ---
+if len(sys.argv) != 3:
+    print('[FATAL] API Keys were not provided as command-line arguments.')
+    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
     sys.exit(1)
+access_key = sys.argv[1]
+secret_key = sys.argv[2]
 print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
 
 # --- 2. Live Trader Class Definition ---
 class LiveTrader:
-    def __init__(self, capital: float): 
-        self.initial_capital = capital 
-        self.agents = {} 
+    def __init__(self, capital: float):
+        self.initial_capital = capital
+        self.agents = {}
         self.upbit_service = UpbitService(access_key, secret_key)
         self.risk_control_tower = RiskControlTower(mdd_threshold=-0.15)
         self.execution_engine = UpbitExecutionEngine(self.upbit_service)
         self.specialist_stats = self._load_specialist_stats()
         self.portfolio_history = pd.Series(dtype=float)
-        self.sentiment_analyzer = None # Initialize as None
+        self.sentiment_analyzer = None
 
     async def initialize(self):
         print('🚀 AI 퀀트 펀드 시스템 초기화를 시작합니다...')
@@ -50,35 +47,28 @@ class LiveTrader:
         print('✅ 시스템 초기화 완료.')
 
     def _load_agents(self):
-        print("\n- 훈련된 전문가 AI 에이전트들을 로드합니다...")
+        print('\n- 훈련된 전문가 AI 에이전트들을 로드합니다...')
         model_path = MODEL_SAVE_PATH # 'foundational_agent.zip'
         
         if not os.path.exists(model_path):
-            print(f'--- 경고: 훈련된 AI 모델({model_path})을 찾을 수 없습니다. ---')
-            print('--- 최초 1회 훈련을 시작합니다... (최대 20분 소요) ---')
-            try:
-                train_foundational_agent(total_timesteps=150000)
-            except Exception as e:
-                print('[FATAL] 훈련 중 치명적인 오류 발생:')
-                print(traceback.format_exc())
-                raise e
-            print('--- 훈련 완료! 에이전트를 다시 로드합니다. ---')
+            print(f'[FATAL] 치명적 오류: 모델 파일({model_path})이 없습니다.')
+            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
+            raise Exception(f'Model file not found: {model_path}')
 
-        if os.path.exists(model_path):
-            try:
-                dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
-                dummy_env = SimpleTradingEnv(dummy_df)
-            except Exception: dummy_env = None
+        try:
+            dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
+            dummy_env = SimpleTradingEnv(dummy_df)
+        except Exception as e:
+            print(f'[WARN] Dummy env for loading failed: {e}')
+            dummy_env = None
 
-            print(f'  - [Foundational] {model_path} 로드 시도...')
-            foundational_model = PPO.load(model_path, env=dummy_env)
-            
-            regimes = ['Bullish', 'Bearish', 'Sideways']
-            for regime in regimes:
-                self.agents[regime] = foundational_model
-            print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
-        else:
-            raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_path})을 생성하지 못했습니다.')
+        print(f'  - [Foundational] {model_path} 로드 시도...')
+        foundational_model = PPO.load(model_path, env=dummy_env)
+        
+        regimes = ['Bullish', 'Bearish', 'Sideways']
+        for regime in regimes:
+            self.agents[regime] = foundational_model
+        print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
 
     def _init_analyzer(self):
         print('\n- Gemini 정보 분석가를 준비합니다...')
@@ -97,12 +87,9 @@ class LiveTrader:
                 print('  - 성과 데이터 로드 완료.')
                 return stats
         else:
-            # This file is created by the trainer, so this warning is normal on first run
-            print('  - 경고: 성과 데이터 파일이 없습니다. 기본값으로 시작합니다.')
-            return {
-                regime: {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
-                for regime in ['Bullish', 'Bearish', 'Sideways']
-            }
+            print('[FATAL] 성과 데이터 파일(specialist_stats.json)이 없습니다.')
+            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
+            raise Exception(f'Stats file not found: {stats_file}')
 
     async def get_total_balance(self) -> float:
         krw_balance = await self.upbit_service.get_balance('KRW') or 0
@@ -123,7 +110,7 @@ class LiveTrader:
         print('\n-- 🚀 AI 퀀트 펀드 실시간 운영 시작 --')
         while True:
             try:
-                # 1. 포트폴리오 상태 업데이트 및 서킷 브레이커 확인
+                # 1. 포트폴리오 상태 업데이트 및 서킷 브레이커
                 net_worth = await self.get_total_balance()
                 self.portfolio_history[pd.Timestamp.now()] = net_worth
                 if self.risk_control_tower.check_mdd_circuit_breaker(self.portfolio_history):
@@ -149,7 +136,7 @@ class LiveTrader:
                     current_regime = 'Sideways'
                     if short_sma > long_sma * 1.01: current_regime = 'Bullish'
                     elif short_sma < long_sma * 0.99: current_regime = 'Bearish'
-                    
+
                     agent_to_use = self.agents.get(current_regime)
                     if not agent_to_use:
                         print(f'경고: [{symbol}]을(를) 담당할 AI 에이전트가 없습니다. (Sideways 모델로 대체)')
@@ -219,15 +206,15 @@ class LiveTrader:
             print('[FATAL] 거래 루프 중 치명적 오류 발생:')
             print(traceback.format_exc())
             await asyncio.sleep(60)
-async def main_live(): 
-    trader = LiveTrader(capital=1000000) 
-    await trader.initialize() 
+async def main_live():
+    trader = LiveTrader(capital=1000000)
+    await trader.initialize()
     await trader.run()
 
-if __name__ == '__main__': 
-    try: 
-        asyncio.run(main_live()) 
-    except Exception as e: 
-        print('[FATAL] 봇이 최상위 레벨에서 중지되었습니다.') 
+if __name__ == '__main__':
+    try:
+        asyncio.run(main_live())
+    except Exception as e:
+        print('[FATAL] 봇이 최상위 레벨에서 중지되었습니다.')
         print(traceback.format_exc())
         sys.exit(1)

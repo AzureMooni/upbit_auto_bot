@@ -49,13 +49,17 @@ class UpbitService:
 
     async def get_current_price(self, ticker: str):
         try:
-            return (await self.exchange.fetch_ticker(ticker))['last']
+            # Ticker must be in 'BTC/KRW' format for ccxt
+            ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
+            return (await self.exchange.fetch_ticker(ccxt_ticker))['last']
         except Exception:
             return None
 
     async def get_ohlcv(self, ticker: str, timeframe='1h', limit=200):
         try:
-            ohlcv = await self.exchange.fetch_ohlcv(ticker, timeframe=timeframe, limit=limit)
+            # Ticker must be in 'BTC/KRW' format for ccxt
+            ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
+            ohlcv = await self.exchange.fetch_ohlcv(ccxt_ticker, timeframe=timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
@@ -63,3 +67,30 @@ class UpbitService:
         except Exception as e:
             print(f"[ERROR] {ticker} OHLCV 데이터 가져오기 실패: {e}")
             return None
+
+    async def create_market_buy_order(self, ticker, amount_krw):
+        ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
+        print(f"  - [EXEC] {ccxt_ticker} 시장가 매수 주문 (금액: {amount_krw:.0f} KRW)")
+        try:
+            order = await self.exchange.create_market_buy_order(ccxt_ticker, amount_krw)
+            print(f"  - [SUCCESS] 매수 주문 성공, ID: {order.get('id')}")
+            return order
+        except Exception as e:
+            print(f"  - [ERROR] 매수 주문 실패: {e}")
+            return None
+
+    async def create_market_sell_order(self, ticker, amount_coin):
+        ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
+        print(f"  - [EXEC] {ccxt_ticker} 시장가 매도 주문 (수량: {amount_coin})")
+        try:
+            order = await self.exchange.create_market_sell_order(ccxt_ticker, amount_coin)
+            print(f"  - [SUCCESS] 매도 주문 성공, ID: {order.get('id')}")
+            return order
+        except Exception as e:
+            print(f"  - [ERROR] 매도 주문 실패: {e}")
+            return None
+
+    async def liquidate_all_positions(self, holdings):
+        print("🚨 [RCT] 서킷 브레이커 발동! 모든 포지션 청산 시작...")
+        for ticker, amount in holdings.items():
+            await self.create_market_sell_order(ticker, amount)

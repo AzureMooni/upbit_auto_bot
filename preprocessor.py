@@ -19,7 +19,7 @@ class DataPreprocessor:
 
     def _preprocess_single_ticker(self, ticker: str) -> pd.DataFrame | None:
         print(f"데이터를 로드합니다: {ticker}")
-        file_path = os.path.join(self.cache_dir, f"{ticker.replace('-', '_')}_{self.interval}.feather")
+        file_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_')}_{self.interval}.feather")
         
         if not os.path.exists(file_path):
             print(f"캐시 파일이 없습니다. {ticker} 데이터를 다운로드합니다.")
@@ -50,7 +50,6 @@ class DataPreprocessor:
             'RSI_14', 'MACD_hist', 'regime'
         ]
         
-        # Check if all columns exist
         missing_cols = [col for col in final_features if col not in df_processed.columns]
         if missing_cols:
             print(f"[WARN] {ticker}에서 누락된 피처: {missing_cols}. 이 티커를 건너뜁니다.")

@@ -14,7 +14,7 @@ from rl_environment import TradingEnv
 LOOKBACK_WINDOW = 50
 DATA_PATH = "cache/preprocessed_data.pkl"
 LOG_DIR = "foundational_rl_tensorboard_logs/"
-MODEL_SAVE_PATH = "foundational_agent.zip"
+MODEL_SAVE_PATH = "foundational_agent.zip" # Single model
 
 def train_foundational_agent(total_timesteps=100000): # Reduced for speed
     """ Trains the foundational PPO agent on the preprocessed data. """
@@ -78,4 +78,5 @@ def train_foundational_agent(total_timesteps=100000): # Reduced for speed
             json.dump(stats, f)
 
 if __name__ == "__main__":
+    import json
     train_foundational_agent(total_timesteps=150000)
