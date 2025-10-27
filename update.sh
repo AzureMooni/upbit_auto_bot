@@ -7,7 +7,8 @@
 AWS_ACCOUNT_ID="YOUR_AWS_ACCOUNT_ID"
 AWS_REGION="ap-northeast-2"
 ECR_REPOSITORY_NAME="upbit-auto-bot"
-IMAGE_TAG="latest"
+# Use the commit hash as the image tag for precise versioning
+IMAGE_TAG=${1:-latest} # Default to 'latest' if no argument is provided
 CONTAINER_NAME="upbit-bot-container"
 
 # Full Image URI in AWS ECR
@@ -17,7 +18,7 @@ ECR_IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOS
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
-echo "🚀 Starting deployment script..."
+echo "🚀 Starting deployment script for tag: ${IMAGE_TAG}..."
 
 # 1. Log in to AWS ECR
 echo "1/5: Logging in to AWS ECR..."
@@ -25,7 +26,7 @@ aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS 
 echo "✅ ECR login successful."
 
 # 2. Pull the latest image from ECR
-echo "\n2/5: Pulling latest image from ECR: ${ECR_IMAGE_URI}"
+echo "\n2/5: Pulling image from ECR: ${ECR_IMAGE_URI}"
 docker pull ${ECR_IMAGE_URI}
 echo "✅ Image pull successful."
 
@@ -55,4 +56,4 @@ docker run -d \
     --restart always \
     ${ECR_IMAGE_URI}
 
-echo "\n🎉 Deployment complete! The new bot container is now running."
+echo "\n🎉 Deployment complete! The new bot container is now running with tag [${IMAGE_TAG}]."
