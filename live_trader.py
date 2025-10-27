@@ -203,9 +203,9 @@ class LiveTrader:
                 await asyncio.sleep(600)
 
             except Exception as e:
-            print('[FATAL] 거래 루프 중 치명적 오류 발생:')
-            print(traceback.format_exc())
-            await asyncio.sleep(60)
+                print('[FATAL] 거래 루프 중 치명적 오류 발생:')
+                print(traceback.format_exc())
+                await asyncio.sleep(60)
 async def main_live():
     trader = LiveTrader(capital=1000000)
     await trader.initialize()
