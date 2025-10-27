@@ -84,15 +84,22 @@ class LiveTrader:
     def _load_specialist_stats(self):
         stats_file = 'specialist_stats.json'
         print(f'\n- 과거 전문가 AI 성과({stats_file})를 로드합니다...')
-        if os.path.exists(stats_file):
+        if os.path.exists(stats_file) and os.path.getsize(stats_file) > 0:
             with open(stats_file, 'r') as f:
-                stats = json.load(f)
-                print('  - 성과 데이터 로드 완료.')
-                return stats
+                try:
+                    stats = json.load(f)
+                    print('  - 성과 데이터 로드 완료.')
+                    return stats
+                except json.JSONDecodeError:
+                    print(f'  - 경고: {stats_file} 파일이 비어 있거나 잘못된 형식입니다. 기본값으로 시작합니다.')
         else:
-            print('[FATAL] 성과 데이터 파일(specialist_stats.json)이 없습니다.')
-            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-            raise Exception(f'Stats file not found: {stats_file}')
+            print(f'  - 경고: 성과 데이터 파일({stats_file})이 없습니다. 기본값으로 시작합니다.')
+        
+        # Return default stats if file doesn't exist or is empty/corrupt
+        return {
+            regime: {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
+            for regime in ['Bullish', 'Bearish', 'Sideways']
+        }
 
     async def get_total_balance(self) -> float:
         krw_balance = await self.upbit_service.get_balance('KRW') or 0
