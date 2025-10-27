@@ -31,8 +31,8 @@ def train_foundational_agent(total_timesteps=100000): # Reduced for speed
     # --- End of Fix ---
 
     if not all_data_dict:
-        print("오류: 전처리된 데이터가 없습니다. 훈련을 중단합니다.")
-        return
+        print("[FATAL] 전처리 후 사용 가능한 데이터가 없습니다. Preprocessor 로그를 확인하세요.")
+        raise Exception("Preprocessing failed: No data was returned.")
 
     # Concatenate all dataframes for foundational training
     df = pd.concat(all_data_dict.values(), ignore_index=False)
