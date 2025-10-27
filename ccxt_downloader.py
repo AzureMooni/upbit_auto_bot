@@ -68,8 +68,10 @@ class CCXTDataDownloader:
 
         while since_timestamp < self.exchange.parse8601(end_date_str + "T00:00:00Z"):
             try:
+                # Convert ticker from "KRW-BTC" to "BTC/KRW" for ccxt
+                ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
                 ohlcv = self.exchange.fetch_ohlcv(
-                    ticker, timeframe, since=since_timestamp, limit=self.limit
+                    ccxt_ticker, timeframe, since=since_timestamp, limit=self.limit
                 )
                 if not ohlcv:
                     break
