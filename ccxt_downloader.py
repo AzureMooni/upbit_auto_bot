@@ -20,11 +20,14 @@ class CCXTDataDownloader:
             interval_map = {'1h': 'minute60'}
             pyupbit_interval = interval_map.get(timeframe, timeframe)
             
-            # fetch_ohlcv_by_date can be more reliable
+            print(f"  [pyupbit] Calling get_ohlcv_by_date with ticker={ticker}, interval={pyupbit_interval}, to={end_date_str}, count={self.limit * 10})")
             df = pyupbit.get_ohlcv_by_date(ticker, interval=pyupbit_interval, to=end_date_str, count=self.limit * 10) # Fetch more data
             
-            if df is None or df.empty:
-                print(f"  [pyupbit] No data returned for {ticker}.")
+            if df is None:
+                print(f"  [pyupbit] get_ohlcv_by_date returned None for {ticker}.")
+                return None
+            if df.empty:
+                print(f"  [pyupbit] get_ohlcv_by_date returned empty DataFrame for {ticker}.")
                 return None
 
             print(f"  [pyupbit] Successfully downloaded {len(df)} data points for {ticker}.")
