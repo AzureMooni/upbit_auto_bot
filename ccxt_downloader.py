@@ -11,6 +11,7 @@ SCALPING_TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW"]
 class CCXTDataDownloader:
     def __init__(self, limit: int = 200):
         self.exchange = ccxt.upbit()
+        self.exchange.load_markets()
         self.data_dir = "data"
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
@@ -25,18 +26,24 @@ class CCXTDataDownloader:
     ) -> pd.DataFrame | None:
         """
         Downloads OHLCV data for a given ticker and timeframe.
-        If start_date_str and end_date_str are not provided, it tries to download all available data.
+        Checks for market existence before downloading.
         """
         if start_date_str is None:
-            start_date_str = "2017-01-01" # Default to a very early date if not provided
+            start_date_str = "2017-01-01"
         if end_date_str is None:
             end_date_str = datetime.now().strftime("%Y-%m-%d")
 
+        # Convert ticker to ccxt format and check if market exists
+        ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
+        if ccxt_ticker not in self.exchange.markets:
+            print(f"  [Downloader] WARNING: Market '{ccxt_ticker}' not found in exchange. Skipping.")
+            return None
+
         print(
-            f"Downloading {ticker} {timeframe} data from {start_date_str} to {end_date_str}..."
+            f"Downloading {ccxt_ticker} {timeframe} data from {start_date_str} to {end_date_str}..."
         )
 
-        filename = ticker.replace("/", "_") + f"_{timeframe}.feather" # Changed to feather for performance
+        filename = ccxt_ticker.replace("/", "_") + f"_{timeframe}.feather"
         filepath = os.path.join(self.data_dir, filename)
 
         since_timestamp = self.exchange.parse8601(start_date_str + "T00:00:00Z")
@@ -68,8 +75,6 @@ class CCXTDataDownloader:
 
         while since_timestamp < self.exchange.parse8601(end_date_str + "T00:00:00Z"):
             try:
-                # Convert ticker from "KRW-BTC" to "BTC/KRW" for ccxt
-                ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
                 ohlcv = self.exchange.fetch_ohlcv(
                     ccxt_ticker, timeframe, since=since_timestamp, limit=self.limit
                 )
@@ -80,7 +85,7 @@ class CCXTDataDownloader:
                 since_timestamp = ohlcv[-1][0] + timeframe_duration_ms
                 last_data_dt = datetime.fromtimestamp(ohlcv[-1][0] / 1000)
                 print(
-                    f"  Fetched {len(ohlcv)} data points for {ticker}. Last timestamp: {last_data_dt}"
+                    f"  Fetched {len(ohlcv)} data points for {ccxt_ticker}. Last timestamp: {last_data_dt}"
                 )
                 time.sleep(0.5)  # Upbit API rate limit
 
@@ -88,7 +93,7 @@ class CCXTDataDownloader:
                 print("  Rate limit exceeded. Waiting for 30 seconds...")
                 time.sleep(30)
             except Exception as e:
-                print(f"  Error downloading {ticker} data: {e}")
+                print(f"  Error downloading {ccxt_ticker} data: {e}")
                 break
 
         if all_ohlcv:
@@ -109,11 +114,11 @@ class CCXTDataDownloader:
             else:
                 df = new_df
 
-            df.reset_index().to_feather(filepath) # Save as feather
+            df.reset_index().to_feather(filepath)
             print(
-                f"Successfully saved/updated {ticker} data to {filepath}. Total {len(df)} data points."
+                f"Successfully saved/updated {ccxt_ticker} data to {filepath}. Total {len(df)} data points."
             )
             return df
         else:
-            print(f"No new data downloaded for {ticker}.")
-            return existing_df if not existing_df.empty else None # Return existing data if no new data
+            print(f"No new data downloaded for {ccxt_ticker}.")
+            return existing_df if not existing_df.empty else None
