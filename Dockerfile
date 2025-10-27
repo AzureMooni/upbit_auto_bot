@@ -20,12 +20,8 @@ RUN pip install --no-cache-dir tensorflow
 # 5. Copy ALL Application Code
 COPY . .
 
-# 6. --- Build-Time Training (The Fix) ---
-# Create cache directory (fixes FileNotFoundError in preprocessor)
+# 6. Create cache directory
 RUN mkdir -p /app/cache
-
-# Run the trainer to fetch, preprocess, and train, generating all .pkl, .zip, and .json files
-RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # 7. Final Entrypoint
 ENTRYPOINT ["python", "live_trader.py"]

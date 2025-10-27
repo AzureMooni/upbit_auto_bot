@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 # --- Core Module Imports ---
 try:
     from universe_manager import get_top_10_coins
-    from foundational_model_trainer import MODEL_SAVE_PATH
+    from foundational_model_trainer import MODEL_SAVE_PATH, train_foundational_agent
     from trading_env_simple import SimpleTradingEnv
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
@@ -54,24 +54,35 @@ class LiveTrader:
         model_path = MODEL_SAVE_PATH # 'foundational_agent.zip'
         
         if not os.path.exists(model_path):
-            print(f'[FATAL] 치명적 오류: 모델 파일({model_path})이 없습니다.')
-            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-            raise Exception(f'Model file not found: {model_path}')
+            print(f'--- 경고: 훈련된 AI 모델({model_path})을 찾을 수 없습니다. ---')
+            print('--- EC2 인스턴스에서 최초 1회 훈련을 시작합니다... (최대 20분 소요) ---')
+            try:
+                train_foundational_agent(total_timesteps=150000)
+            except Exception as e:
+                print('[FATAL] 훈련 중 치명적인 오류 발생:')
+                print(traceback.format_exc())
+                raise e # Re-raise the exception to stop the bot if training fails
+            print('--- 훈련 완료! 에이전트를 다시 로드합니다. ---')
 
-        try:
-            dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
-            dummy_env = SimpleTradingEnv(dummy_df)
-        except Exception as e:
-            print(f'[WARN] Dummy env for loading failed: {e}')
-            dummy_env = None
+        # After training or if the file already existed, try to load it.
+        if os.path.exists(model_path):
+            try:
+                dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
+                dummy_env = SimpleTradingEnv(dummy_df)
+            except Exception as e:
+                print(f'[WARN] Dummy env for loading failed: {e}')
+                dummy_env = None
 
-        print(f'  - [Foundational] {model_path} 로드 시도...')
-        foundational_model = PPO.load(model_path, env=dummy_env)
-        
-        regimes = ['Bullish', 'Bearish', 'Sideways']
-        for regime in regimes:
-            self.agents[regime] = foundational_model
-        print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
+            print(f'  - [Foundational] {model_path} 로드 시도...')
+            foundational_model = PPO.load(model_path, env=dummy_env)
+            
+            regimes = ['Bullish', 'Bearish', 'Sideways']
+            for regime in regimes:
+                self.agents[regime] = foundational_model
+            print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
+        else:
+            # If the file still doesn't exist after trying to train, it's a fatal error.
+            raise Exception(f'FATAL: 훈련을 시도했으나, AI 모델 파일({model_path})을 생성하지 못했습니다.')
 
     def _init_analyzer(self):
         print('\n- Gemini 정보 분석가를 준비합니다...')
