@@ -53,7 +53,7 @@ class LiveTrader:
         if not os.path.exists(model_path):
             print(f'[FATAL] 치명적 오류: 모델 파일({model_path})이 없습니다.')
             print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_path})을 생성하지 못했습니다.')
+            raise Exception(f'Model file not found: {model_path}')
 
         try:
             dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
@@ -116,7 +116,7 @@ raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_pat
                 if self.risk_control_tower.check_mdd_circuit_breaker(self.portfolio_history):
                     all_balances = await self.upbit_service.get_all_balances()
                     holdings_to_liquidate = {f'KRW-{ticker}': info['balance'] for ticker, info in all_balances.items() if info['balance'] > 0 and ticker != 'KRW'}
-                    await self.execution_engine.liquidate_all_positions(holdings_to_liquidate)
+                    await self.upbit_service.liquidate_all_positions(holdings_to_liquidate)
                     print('🚨 모든 거래가 중단되었습니다. 시스템을 종료합니다.')
                     break
 
@@ -187,7 +187,7 @@ raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_pat
                             cash_balance = await self.upbit_service.get_balance('KRW') or 0
                             buy_amount_krw = cash_balance * investment_fraction
                             if buy_amount_krw > 5000:
-                                await self.execution_engine.create_market_buy_order(symbol, buy_amount_krw)
+                                await self.upbit_service.create_market_buy_order(symbol, buy_amount_krw)
                             else:
                                 print('  - [EXEC] 주문 금액이 최소 기준(5,000 KRW) 미만입니다.')
 
@@ -195,7 +195,7 @@ raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_pat
                         coin_ticker = symbol.split('-')[1] # KRW-BTC -> BTC
                         coin_balance = await self.upbit_service.get_balance(coin_ticker)
                         if coin_balance and coin_balance > 0:
-                            await self.execution_engine.create_market_sell_order(symbol, coin_balance)
+                            await self.upbit_service.create_market_sell_order(symbol, coin_balance)
                         else:
                             print(f'  - [EXEC] 매도할 {coin_ticker} 코인이 없습니다.')
                 

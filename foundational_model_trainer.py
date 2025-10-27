@@ -8,7 +8,7 @@ from gymnasium.wrappers import FlattenObservation
 
 # This now correctly imports the preprocessor
 from preprocessor import DataPreprocessor
-from data_fetcher import DataFetcher
+from rl_environment import TradingEnv
 
 # --- Constants ---
 LOOKBACK_WINDOW = 50

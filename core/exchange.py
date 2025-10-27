@@ -72,7 +72,8 @@ class UpbitService:
         ccxt_ticker = ticker.replace("KRW-", "") + "/KRW"
         print(f"  - [EXEC] {ccxt_ticker} 시장가 매수 주문 (금액: {amount_krw:.0f} KRW)")
         try:
-            order = await self.exchange.create_market_buy_order(ccxt_ticker, amount_krw)
+            # ccxt uses 'cost' for market buy orders in KRW
+            order = await self.exchange.create_market_buy_order(ccxt_ticker, None, params={'cost': amount_krw})
             print(f"  - [SUCCESS] 매수 주문 성공, ID: {order.get('id')}")
             return order
         except Exception as e:
