@@ -1,59 +1,40 @@
 #!/bin/bash
 
-# This script automates the process of updating the Docker container on the EC2 server.
+# 이 스크립트는 EC2 서버에서 수동으로 실행되어야 합니다.
+# 사용법: sudo bash update.sh
+set -e
 
-# --- Configuration ---
-# IMPORTANT: Fill in your AWS Account ID below.
-AWS_ACCOUNT_ID="YOUR_AWS_ACCOUNT_ID"
-AWS_REGION="ap-northeast-2"
-ECR_REPOSITORY_NAME="upbit-auto-bot"
-# Use the commit hash as the image tag for precise versioning
-IMAGE_TAG=${1:-latest} # Default to 'latest' if no argument is provided
-CONTAINER_NAME="upbit-bot-container"
+# 1. 환경 변수 (ECR 주소)
+AWS_ACCOUNT_ID="853452246030"
+AWS_REGION="ap-southeast-1"
+ECR_REPOSITORY="ai-commander-v2"
+IMAGE_TAG="latest"
 
-# Full Image URI in AWS ECR
-ECR_IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}:${IMAGE_TAG}"
+# 2. ECR 로그인 (EC2 IAM 역할 사용)
+echo "Logging in to Amazon ECR..."
+aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-# --- Execution ---
+# 3. 기존 컨테이너 중지 및 삭제
+echo "Stopping and removing old 'upbit-bot' container..."
+docker stop upbit-bot || true
+docker rm upbit-bot || true
 
-set -e # Exit immediately if a command exits with a non-zero status.
+# 4. 최신 'latest' 이미지 PULL
+echo "Pulling latest image: $ECR_REPOSITORY:$IMAGE_TAG..."
+docker pull $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
-echo "🚀 Starting deployment script for tag: ${IMAGE_TAG}..."
-
-# 1. Log in to AWS ECR
-echo "1/5: Logging in to AWS ECR..."
-aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-echo "✅ ECR login successful."
-
-# 2. Pull the latest image from ECR
-echo "\n2/5: Pulling image from ECR: ${ECR_IMAGE_URI}"
-docker pull ${ECR_IMAGE_URI}
-echo "✅ Image pull successful."
-
-# 3. Stop the existing container if it is running
-if [ $(docker ps -q -f name=${CONTAINER_NAME}) ]; then
-    echo "\n3/5: Stopping existing container..."
-    docker stop ${CONTAINER_NAME}
-    echo "✅ Container stopped."
-else
-    echo "\n3/5: No running container found with the name ${CONTAINER_NAME}. Skipping stop."
-fi
-
-# 4. Remove the stopped container
-if [ $(docker ps -a -q -f name=${CONTAINER_NAME}) ]; then
-    echo "\n4/5: Removing existing container..."
-    docker rm ${CONTAINER_NAME}
-    echo "✅ Container removed."
-else
-    echo "\n4/5: No container found with the name ${CONTAINER_NAME}. Skipping removal."
-fi
-
-# 5. Run the new container from the updated image
-echo "\n5/5: Running the new container..."
+# 5. 새 컨테이너 실행
+# 이 명령어는 이 스크립트와 동일한 디렉토리에 .env 파일이 있다고 가정합니다.
+echo "Starting new container..."
 docker run -d \
-    --name ${CONTAINER_NAME} \
-    --env-file ./.env \
+    --name upbit-bot \
     --restart always \
-    ${ECR_IMAGE_URI}
+    --env-file ./.env \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
-echo "\n🎉 Deployment complete! The new bot container is now running with tag [${IMAGE_TAG}]."
+# 6. 오래된 이미지 정리
+echo "Cleaning up old docker images..."
+docker image prune -af
+
+echo "✅ Update complete."
+echo "Run 'docker logs -f upbit-bot' to check the status."

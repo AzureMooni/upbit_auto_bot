@@ -53,7 +53,7 @@ class LiveTrader:
         if not os.path.exists(model_path):
             print(f'[FATAL] 치명적 오류: 모델 파일({model_path})이 없습니다.')
             print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-            raise Exception(f'Model file not found: {model_path}')
+raise Exception(f'오류: 훈련을 시도했으나, AI 모델 파일({model_path})을 생성하지 못했습니다.')
 
         try:
             dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
