@@ -18,46 +18,42 @@ class DataPreprocessor:
         self.data_downloader = CCXTDataDownloader()
 
     def _preprocess_single_ticker(self, ticker: str) -> pd.DataFrame | None:
-        print(f"데이터를 로드합니다: {ticker}")
-        file_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_')}_{self.interval}.feather")
+        print(f"  [Preprocessor] Processing ticker: {ticker}")
         
-        if not os.path.exists(file_path):
-            print(f"캐시 파일이 없습니다. {ticker} 데이터를 다운로드합니다.")
-            df = self.data_downloader.download_ohlcv(ticker, self.interval)
-            if df is None or df.empty:
-                print(f"오류: {ticker} 데이터를 다운로드할 수 없습니다.")
-                return None
-            df.reset_index().to_feather(file_path)
-        else:
-            df = pd.read_feather(file_path)
-            df.set_index("timestamp", inplace=True)
+        # 1. Download data using the new pyupbit-based downloader
+        df = self.data_downloader.download_ohlcv(ticker, self.interval)
+        if df is None or df.empty:
+            print(f"  [Preprocessor] Failed to get data for {ticker}. Skipping.")
+            return None
 
-        print(f"{ticker} 모든 기술적 지표와 시장 체제를 계산합니다...")
+        # 2. Calculate all indicators manually for stability
+        print(f"  [Preprocessor] Calculating indicators for {ticker}...")
         df_processed = precompute_all_indicators(df)
-        df_processed = generate_v_recovery_signals(df_processed)
-        df_processed = generate_sideways_signals(df_processed)
         
+        # 3. Add market regime as a feature
         daily_regime = df_processed.apply(get_market_regime, axis=1).rename('regime')
-        df_processed['regime'] = daily_regime.reindex(df_processed.index.date).set_axis(df_processed.index)
-        df_processed['regime'] = df_processed['regime'].ffill()
+        df_processed['regime'] = daily_regime.reindex(df_processed.index, method='ffill')
         
-        regime_map = {name: i for i, name in enumerate(df_processed['regime'].unique())}
-        df_processed['regime'] = df_processed['regime'].map(regime_map)
-        
+        # Map regime strings to integers
+        regime_map = {'BEARISH': 0, 'NEUTRAL': 1} # Simplified regimes
+        df_processed['regime'] = df_processed['regime'].map(regime_map).fillna(1) # Fill NaNs with Neutral
+
+        # 4. Define final features based on what's reliably calculated
         final_features = [
             'open', 'high', 'low', 'close', 'volume',
-            'ADX', 'Normalized_ATR', 'BBP', 'EMA_20', 'EMA_50',
-            'RSI_14', 'MACD_hist', 'regime'
+            'SMA_50', 'SMA_200', 'RSI_14', 'MACDh_12_26_9', 'BBP_20_2.0', 'ATRr_14', 'regime'
         ]
         
-        missing_cols = [col for col in final_features if col not in df_processed.columns]
-        if missing_cols:
-            print(f"[WARN] {ticker}에서 누락된 피처: {missing_cols}. 이 티커를 건너뜁니다.")
-            return None
-            
-        df_final = df_processed[final_features].dropna()
+        # Use only the features that were successfully calculated
+        available_features = [col for col in final_features if col in df_processed.columns]
         
-        print(f"{ticker} 전처리가 완료되었습니다. {len(df_final)}개의 데이터 포인트를 반환합니다.")
+        df_final = df_processed[available_features].dropna()
+        
+        if df_final.empty:
+            print(f"  [Preprocessor] No data left for {ticker} after processing. Skipping.")
+            return None
+
+        print(f"  [Preprocessor] Preprocessing complete for {ticker}. {len(df_final)} rows returned.")
         return df_final
 
     def run_and_save_to_pickle(self, save_path):
