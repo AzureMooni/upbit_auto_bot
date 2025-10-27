@@ -1,5 +1,6 @@
 import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
 from stable_baselines3 import PPO
+from dotenv import load_dotenv
 
 # --- Core Module Imports ---
 try:
@@ -16,14 +17,16 @@ except ImportError as e:
     print(traceback.format_exc())
     sys.exit(1)
 
-# --- 1. Load API Keys from Command-Line Arguments ---
-if len(sys.argv) != 3:
-    print('[FATAL] API Keys were not provided as command-line arguments.')
-    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
+# --- 1. Load API Keys from .env file ---
+load_dotenv()
+access_key = os.getenv('UPBIT_ACCESS_KEY')
+secret_key = os.getenv('UPBIT_SECRET_KEY')
+
+if not access_key or not secret_key:
+    print('[FATAL] UPBIT_ACCESS_KEY or UPBIT_SECRET_KEY not found in .env file.')
+    print('Please create a .env file on the server with your API keys.')
     sys.exit(1)
-access_key = sys.argv[1]
-secret_key = sys.argv[2]
-print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
+print(f'[INFO] API Keys loaded successfully from .env file. Access Key starts with: {access_key[:4]}...')
 
 # --- 2. Live Trader Class Definition ---
 class LiveTrader:
