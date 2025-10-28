@@ -35,7 +35,7 @@ class SimpleTradingEnv(gym.Env):
             dtype=np.float32,
         )
 
-        self.reset()
+
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)

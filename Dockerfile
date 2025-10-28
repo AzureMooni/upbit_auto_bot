@@ -13,9 +13,6 @@ WORKDIR /app
 # 4. Install Python Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install pyjwt==2.3.0
-RUN pip install pyupbit
-RUN pip install --no-cache-dir tensorflow
 
 # 5. Copy ALL Application Code
 COPY . .

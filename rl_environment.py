@@ -20,7 +20,7 @@ class TradingEnv(gym.Env):
         self.transaction_cost = transaction_cost
 
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(lookback_window, 13), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(lookback_window, df.shape[1]), dtype=np.float32
         )
         self.action_space = spaces.Discrete(3)
         
