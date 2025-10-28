@@ -55,8 +55,8 @@ class LiveTrader:
         print('✅ 시스템 초기화 완료.')
 
     def _load_agents(self):
-        print('
-- 훈련된 전문가 AI 에이전트들을 로드합니다...')
+        print("""
+- 훈련된 전문가 AI 에이전트들을 로드합니다...""")
         if not os.path.exists(self.model_path):
             print(f'[FATAL] 치명적 오류: 모델 파일({self.model_path})이 없습니다.')
             print('Docker 빌드 과정(build-time training)이 실패했습니다.')
@@ -72,8 +72,8 @@ class LiveTrader:
         print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
 
     def _init_analyzer(self):
-        print('
-- Gemini 정보 분석가를 준비합니다...')
+        print("""
+- Gemini 정보 분석가를 준비합니다...""")
         try:
             self.sentiment_analyzer = SentimentAnalyzer()
             print('  - 정보 분석가 준비 완료.')
@@ -81,8 +81,8 @@ class LiveTrader:
             print(f'  - 경고: {e} (Gemini API 키가 없거나 SentimentAnalyzer 모듈 오류.)')
 
     def _load_specialist_stats(self):
-        print(f'
-- 과거 전문가 AI 성과({self.stats_path})를 로드합니다...')
+        print(f"""
+- 과거 전문가 AI 성과({self.stats_path})를 로드합니다...""")
         if os.path.exists(self.stats_path):
             with open(self.stats_path, 'r') as f:
                 self.specialist_stats = json.load(f)
@@ -108,8 +108,8 @@ class LiveTrader:
         return total_asset_value
 
     async def run(self):
-        print('
--- 🚀 AI 퀀트 펀드 실시간 운영 시작 --')
+        print("""
+-- 🚀 AI 퀀트 펀드 실시간 운영 시작 --""")
         retries = 0
         while retries < self.max_retries:
             try:
@@ -142,8 +142,8 @@ class LiveTrader:
             
             # 3. 각 자산에 대한 거래 결정
             for symbol in universe:
-                print(f'
-{pd.Timestamp.now()}: [{symbol}] 분석 시작...')
+                print(f"""
+{pd.Timestamp.now()}: [{symbol}] 분석 시작...""")
                 
                 # 3a. 시장 분석 및 전문가 AI 선택
                 btc_df = await self.upbit_service.get_ohlcv('KRW-BTC', '1h', 200)
@@ -218,8 +218,8 @@ class LiveTrader:
                     else:
                         print(f'  - [EXEC] 매도할 {coin_ticker} 코인이 없습니다.')
             
-            print('
---- 10분 후 다음 유니버스 사이클 시작 ---')
+            print("""
+--- 10분 후 다음 유니버스 사이클 시작 ---""")
             await asyncio.sleep(600)
 
 async def main_live():
