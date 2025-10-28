@@ -1,4 +1,4 @@
-import pandas as pd import os import pickle import numpy as np from market_regime_detector import precompute_all_indicators, get_market_regime from strategies.trend_follower import generate_v_recovery_signals from strategies.mean_reversion_strategy import generate_sideways_signals from ccxt_downloader import CCXTDataDownloader
+ import pandas as pd import os import pickle import numpy as np from market_regime_detector import precompute_all_indicators, get_market_regime from strategies.trend_follower import generate_v_recovery_signals from strategies.mean_reversion_strategy import generate_sideways_signals from ccxt_downloader import CCXTDataDownloader
 
 class DataPreprocessor: def init(self, target_coins=None, interval="1h"): self.target_coins = target_coins if target_coins is not None else [ "KRW-BTC", "KRW-ETH", "KRW-SOL", "KRW-XRP", "KRW-DOGE", "KRW-AVAX", "KRW-LINK", "KRW-ADA", "KRW-ETC", "KRW-LTC" ] self.interval = interval self.cache_dir = "cache" os.makedirs(self.cache_dir, exist_ok=True) self.data_downloader = CCXTDataDownloader()
 

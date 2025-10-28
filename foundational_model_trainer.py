@@ -1,4 +1,4 @@
-import pandas as pd import os import shutil import json from stable_baselines3 import PPO from stable_baselines3.common.vec_env import DummyVecEnv from gymnasium.wrappers import FlattenObservation
+ import pandas as pd import os import shutil import json from stable_baselines3 import PPO from stable_baselines3.common.vec_env import DummyVecEnv from gymnasium.wrappers import FlattenObservation
 
 # This now correctly imports the preprocessor
 from preprocessor import DataPreprocessor from rl_environment import TradingEnv
@@ -54,4 +54,4 @@ if not os.path.exists(STATS_SAVE_PATH):
     with open(STATS_SAVE_PATH, 'w') as f:
         json.dump(stats, f)
 print(f"기본 성과 파일 {STATS_SAVE_PATH} 생성 완료.")
-if name == "main": train_foundational_agent(total_timesteps=150000)
+if name == "main": train_foundational_agent(total_timesteps=150000) 

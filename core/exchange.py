@@ -1,8 +1,8 @@
- import ccxt.async_support as ccxt import asyncio import pandas as pd import logging
+import ccxt.async_support as ccxt import asyncio import pandas as pd import logging
 
 logger = logging.getLogger(name)
 
-class UpbitService: """ Manages all API interactions with the Upbit exchange using ccxt. """ def init(self, access_key: str, secret_key: str): self.exchange = ccxt.upbit({ 'apiKey': access_key, 'secret': secret_key, 'enableRateLimit': True, })
+class UpbitService: """ Manages all API interactions with the Upbit exchange using ccxt. """ def init(self, access_key: str, secret_key: str): self.exchange = ccxt.upbit({ 'apiKey': access_key, 'secret': secret_key, 'enableRateLimit': True, }) print("Upbit exchange connected successfully.")
 
 async def connect(self):
     try:

@@ -1,12 +1,11 @@
- import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json from stable_baselines3 import PPO
+import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json from stable_baselines3 import PPO
 
 # --- Core Module Imports ---
 try: from universe_manager import get_top_10_coins from foundational_model_trainer import MODEL_SAVE_PATH from trading_env_simple import SimpleTradingEnv from sentiment_analyzer import SentimentAnalyzer from core.exchange import UpbitService from market_regime_detector import precompute_all_indicators, get_market_regime from risk_control_tower import RiskControlTower from execution_engine_interface import UpbitExecutionEngine except ImportError as e: print(f'[FATAL] Failed to import core modules: {e}') print(traceback.format_exc()) sys.exit(1)
 
 # --- 1. Load API Keys from Command-Line Arguments ---
 if len(sys.argv) != 3: print('[FATAL] API Keys were not provided as command-line arguments.') print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>') sys.exit(1) access_key = sys.argv[1] secret_key = sys.argv[2] print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
-
-# --- 2. Live Trader Class Definition ---
+--- 2. Live Trader Class Definition ---
 class LiveTrader: def init(self, capital: float): self.initial_capital = capital self.agents = {} self.upbit_service = UpbitService(access_key, secret_key) self.risk_control_tower = RiskControlTower(mdd_threshold=-0.15) self.execution_engine = UpbitExecutionEngine(self.upbit_service) self.specialist_stats = self._load_specialist_stats() self.portfolio_history = pd.Series(dtype=float) self.sentiment_analyzer = None
 
 async def initialize(self):
