@@ -42,7 +42,7 @@ def train_foundational_agent(
     df.sort_index(inplace=True)
 
     # Scale features
-    scaler = MinMaxScaler()
+    scaler = MinMaxScaler(feature_range=(-1, 1))
     # Fit scaler on all features except 'regime' if it's a categorical feature
     # Assuming 'regime' is the last column and is already mapped to numerical values (0, 1, 2)
     # If 'regime' is not the last column, adjust slicing accordingly

@@ -59,6 +59,7 @@ class SimpleTradingEnv(gym.Env):
 
         self.net_worth = self.balance + self.shares_held * current_price
         reward = (self.net_worth - old_net_worth) / self.initial_balance
+        reward = np.clip(reward, -1.0, 1.0) # Clip rewards to prevent extreme values
 
         terminated = (
             self.net_worth <= self.initial_balance * 0.5
