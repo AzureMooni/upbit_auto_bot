@@ -5,6 +5,10 @@ def precompute_all_indicators(df: pd.DataFrame):
     """
     [FINAL] 모든 지표를 pandas 기본 함수만으로 직접 계산하여 안정성을 확보합니다.
     """
+    # EMA
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
+    df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()
+
     # RSI
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()

@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 try:
     from universe_manager import get_top_10_coins
     from foundational_model_trainer import MODEL_SAVE_PATH
-    
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
     from market_regime_detector import precompute_all_indicators, get_market_regime
@@ -179,7 +178,6 @@ class LiveTrader:
                 # The environment is not needed for prediction with a loaded model
                 action_tensor, _ = agent_to_use.predict(obs, deterministic=True)
                 
-
                 obs_tensor = torch.as_tensor(obs).float()
                 _, log_prob, _ = agent_to_use.policy.evaluate_actions(obs_tensor.unsqueeze(0), torch.as_tensor([action_tensor]))
                 confidence = torch.exp(log_prob).item()

@@ -49,7 +49,7 @@ class DataPreprocessor:
         
         final_features = [
             'open', 'high', 'low', 'close', 'volume',
-            'ADX_14', 'NATR_14', 'BBP_20_2.0', 'EMA_20', 'EMA_50',
+            'BBP_20_2.0', 'EMA_20', 'EMA_50',
             'RSI_14', 'MACDh_12_26_9', 'regime'
         ]
         
