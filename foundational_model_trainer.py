@@ -5,8 +5,6 @@ import json
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
-
-# This now correctly imports the preprocessor
 from preprocessor import DataPreprocessor
 from rl_environment import TradingEnv
 
@@ -14,28 +12,24 @@ from rl_environment import TradingEnv
 LOOKBACK_WINDOW = 50
 DATA_PATH = "cache/preprocessed_data.pkl"
 LOG_DIR = "foundational_rl_tensorboard_logs/"
-MODEL_SAVE_PATH = "foundational_agent.zip"  # Single model
+MODEL_SAVE_PATH = "foundational_agent.zip"
 STATS_SAVE_PATH = "specialist_stats.json"
 
-
-def def train_foundational_agent(total_timesteps=100000):  # Reduced for speed
+def train_foundational_agent(total_timesteps=100000):
     if os.path.exists(LOG_DIR):
         print(f"기존 로그 디렉토리 {LOG_DIR}를 삭제합니다.")
         shutil.rmtree(LOG_DIR)
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    # --- 1. (THE FIX) Run Preprocessing First ---
     print('데이터 로딩 및 전처리 시작...')
     preprocessor = DataPreprocessor()
     all_data_dict = preprocessor.run_and_save_to_pickle(DATA_PATH)
     print(f'전처리된 데이터 {DATA_PATH}에 저장 완료.')
-    # --- End of Fix ---
 
     if not all_data_dict:
         print("오류: 전처리된 데이터가 없습니다. 훈련을 중단합니다.")
         return
 
-    # Concatenate all dataframes for foundational training
     df = pd.concat(all_data_dict.values(), ignore_index=False)
     df.sort_index(inplace=True)
 
@@ -70,7 +64,6 @@ def def train_foundational_agent(total_timesteps=100000):  # Reduced for speed
         with open(STATS_SAVE_PATH, 'w') as f:
             json.dump(stats, f)
     print(f"기본 성과 파일 {STATS_SAVE_PATH} 생성 완료.")
-
 
 if __name__ == "__main__":
     train_foundational_agent(total_timesteps=150000)
