@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 # --- Core Module Imports ---
 try:
     from universe_manager import get_top_10_coins
-    from foundational_model_trainer import MODEL_SAVE_PATH
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
     from market_regime_detector import precompute_all_indicators, get_market_regime
@@ -225,7 +224,7 @@ class LiveTrader:
 async def main_live():
     trader = LiveTrader(
         capital=1000000,
-        model_path=MODEL_SAVE_PATH,
+        model_path="foundational_agent.zip",
         stats_path="specialist_stats.json"
     )
     await trader.initialize()
