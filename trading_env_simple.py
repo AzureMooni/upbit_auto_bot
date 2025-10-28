@@ -58,7 +58,7 @@ class SimpleTradingEnv(gym.Env):
         self._take_action(action, current_price)
 
         self.net_worth = self.balance + self.shares_held * current_price
-        reward = self.net_worth - old_net_worth
+        reward = (self.net_worth - old_net_worth) / self.initial_balance
 
         terminated = (
             self.net_worth <= self.initial_balance * 0.5

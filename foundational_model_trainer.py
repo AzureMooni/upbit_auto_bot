@@ -8,6 +8,8 @@ from gymnasium.wrappers import FlattenObservation
 from preprocessor import DataPreprocessor
 from trading_env_simple import SimpleTradingEnv
 import argparse
+from sklearn.preprocessing import MinMaxScaler
+import joblib
 
 def train_foundational_agent(
     total_timesteps=100000,
@@ -39,8 +41,22 @@ def train_foundational_agent(
     df = pd.concat(all_data_dict.values(), ignore_index=False)
     df.sort_index(inplace=True)
 
+    # Scale features
+    scaler = MinMaxScaler()
+    # Fit scaler on all features except 'regime' if it's a categorical feature
+    # Assuming 'regime' is the last column and is already mapped to numerical values (0, 1, 2)
+    # If 'regime' is not the last column, adjust slicing accordingly
+    feature_cols = [col for col in df.columns if col != 'regime']
+    df_scaled = df.copy()
+    df_scaled[feature_cols] = scaler.fit_transform(df[feature_cols])
+    
+    # Save the scaler
+    scaler_save_path = f"{model_save_path}.scaler"
+    joblib.dump(scaler, scaler_save_path)
+    print(f"스케일러가 다음 경로에 저장되었습니다: {scaler_save_path}")
+
     print("거래 환경을 설정합니다...")
-    env = SimpleTradingEnv(df, lookback_window=50)
+    env = SimpleTradingEnv(df_scaled, lookback_window=50)
     env = FlattenObservation(env)
     vec_env = DummyVecEnv([lambda: env])
 
