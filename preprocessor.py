@@ -1,4 +1,5 @@
 import pandas as pd
+import pandas_ta as ta
 import os
 import pickle
 import numpy as np
