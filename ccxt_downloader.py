@@ -20,15 +20,23 @@ class CCXTDataDownloader:
             interval_map = {'1h': 'minute60'}
             pyupbit_interval = interval_map.get(timeframe, timeframe)
             
-            print(f"  [pyupbit] Calling get_ohlcv_by_date with ticker={ticker}, interval={pyupbit_interval}, to={end_date_str}, count={self.limit * 10})")
-            df = pyupbit.get_ohlcv_by_date(ticker, interval=pyupbit_interval, to=end_date_str, count=self.limit * 10) # Fetch more data
+            print(f"  [pyupbit] Calling get_ohlcv with ticker={ticker}, interval={pyupbit_interval}, count={self.limit * 10})")
+            df = pyupbit.get_ohlcv(ticker, interval=pyupbit_interval, count=self.limit * 10) # Fetch a large count of recent data
             
             if df is None:
-                print(f"  [pyupbit] get_ohlcv_by_date returned None for {ticker}.")
+                print(f"  [pyupbit] get_ohlcv returned None for {ticker}.")
                 return None
             if df.empty:
-                print(f"  [pyupbit] get_ohlcv_by_date returned empty DataFrame for {ticker}.")
+                print(f"  [pyupbit] get_ohlcv returned empty DataFrame for {ticker}.")
                 return None
+
+            # Filter by date range if provided
+            if start_date_str:
+                start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+                df = df[df.index >= start_dt]
+            if end_date_str:
+                end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+                df = df[df.index <= end_dt + timedelta(days=1, microseconds=-1)]
 
             print(f"  [pyupbit] Successfully downloaded {len(df)} data points for {ticker}.")
             # pyupbit returns a dataframe with the correct index, so no need for timestamp conversion
