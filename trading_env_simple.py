@@ -19,9 +19,12 @@ class SimpleTradingEnv(gym.Env):
         super().__init__()
 
         self.df = df.dropna().reset_index(drop=True)
+        print(f"[SimpleTradingEnv] Initial df length after dropna: {len(self.df)}")
+        if self.df.empty:
+            raise ValueError("DataFrame is empty after dropping NaN values in SimpleTradingEnv.")
         self.lookback_window = lookback_window
         self.initial_balance = initial_balance
-        self.n_features = df.shape[1]
+        self.n_features = self.df.shape[1] # Use self.df after dropna
         self.end_step = len(self.df) - 1
 
         # Action space: 0: Hold, 1: Buy, 2: Sell
@@ -43,7 +46,9 @@ class SimpleTradingEnv(gym.Env):
         self.shares_held = 0.0
         self.net_worth = self.initial_balance
         self.current_step = self.lookback_window
-        return self._get_observation(), {}
+        obs = self._get_observation()
+        print(f"[SimpleTradingEnv] Reset observation shape: {obs.shape}")
+        return obs, {}
 
     def step(self, action):
         self.current_step += 1
@@ -61,12 +66,17 @@ class SimpleTradingEnv(gym.Env):
         )
         truncated = False
 
-        return self._get_observation(), reward, terminated, truncated, {}
+        obs = self._get_observation()
+        print(f"[SimpleTradingEnv] Step observation shape: {obs.shape}")
+        return obs, reward, terminated, truncated, {}
 
     def _get_observation(self):
-        return self.df.iloc[
+        obs = self.df.iloc[
             self.current_step - self.lookback_window : self.current_step
         ].values.astype(np.float32)
+        if np.isnan(obs).any() or np.isinf(obs).any():
+            print("[SimpleTradingEnv] WARNING: NaN or Inf found in observation!")
+        return obs
 
     def _take_action(self, action, current_price):
         if action == 1:  # Buy
