@@ -3,14 +3,13 @@ import ccxt
 import pandas as pd
 import os
 from datetime import datetime
+import time
+
+from constants import SCALPING_TARGET_COINS
 
 # --- Configuration ---
 DATA_DIR = "data"
-UNIVERSE = [
-    "KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-SOL", "KRW-DOGE", 
-    "KRW-AVAX", "KRW-ADA", "KRW-LINK", "KRW-ETC", "KRW-LTC",
-    "KRW-SEI", "KRW-SUI"
-]
+UNIVERSE = [f"KRW-{ticker.split('/')[0]}" for ticker in SCALPING_TARGET_COINS]
 START_DATE = "2020-01-01T00:00:00Z"
 TIMEFRAME = '1h' # 1-hour candles
 
@@ -32,8 +31,8 @@ def download_historical_data():
             symbol = ticker.replace("KRW-", "") + "/KRW"
             all_ohlcv = []
             
-            # Fetch data in chunks
-            while since < upbit.milliseconds():
+            # Convert start date to milliseconds for each ticker
+            since = upbit.parse8601(START_DATE)
                 ohlcv = upbit.fetch_ohlcv(symbol, timeframe=TIMEFRAME, since=since)
                 if len(ohlcv):
                     since = ohlcv[-1][0] + (upbit.parse_timeframe(TIMEFRAME) * 1000)

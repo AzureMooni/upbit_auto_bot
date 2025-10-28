@@ -9,7 +9,7 @@ from dl_predictor import train_price_prediction_model
 
 # --- Configuration ---
 DATA_DIR = "data/retraining_sets"
-MODEL_PATH = "data/v2_lstm_model.h5"
+MODEL_PATH = "data/v2_lightgbm_model.joblib"
 NTFY_TOPIC = "upbit-sentinel-v2-alerts"
 
 def find_missed_v_recovery(df_15min: pd.DataFrame, df_1h: pd.DataFrame):
@@ -62,11 +62,23 @@ def trigger_retraining_pipeline(ticker: str, data_segment: pd.DataFrame):
         print(f"[SUCCESS] Saved new training data to: {filepath}")
 
         # 2. 모델 재훈련 (Fine-tuning)
-        # 실제 운영 시에는 전체 데이터를 다시 불러와 합쳐서 훈련해야 함
-        # 여기서는 개념 증명을 위해 해당 코인 데이터로만 미세 조정
+        # 기존 모델 로드 (dl_predictor에서 로드)
+        # dl_predictor.py의 predict_win_probability 함수에서 모델을 로드하는 방식과 유사하게 처리
+        # 여기서는 train_price_prediction_model이 전체 데이터를 받으므로, 기존 데이터와 새 데이터를 합쳐서 전달해야 함
         print(f"[INFO] Fine-tuning the model with new data from {ticker}...")
+        
+        # 기존 훈련 데이터 로드 (예시: 전체 데이터를 다시 불러와 합치는 로직)
+        # 실제 구현에서는 기존 훈련 데이터셋을 관리하는 방식에 따라 달라질 수 있음
+        # 여기서는 간단히 pyupbit에서 전체 데이터를 다시 가져오는 것으로 가정
         full_data = pyupbit.get_ohlcv(ticker, "minute60", 2000) # 예시 데이터
-        # 여기에 새로 찾은 데이터를 합치는 로직 추가
+        if full_data is None or full_data.empty:
+            print(f"[WARN] Could not fetch full historical data for {ticker}. Skipping retraining.")
+            return
+
+        # 새로 찾은 데이터를 기존 데이터에 추가 (인덱스 기준으로 병합 또는 concat)
+        # data_segment는 15분봉 데이터이므로, 1시간봉으로 변환하거나, 15분봉 모델을 훈련해야 함
+        # 현재 dl_predictor는 1시간봉 데이터를 가정하므로, data_segment를 1시간봉으로 변환하는 로직이 필요
+        # 여기서는 간단히 full_data만으로 재훈련하는 것으로 가정 (개념 증명)
         
         train_price_prediction_model(full_data, MODEL_PATH)
         print(f"[SUCCESS] Model has been retrained and updated at {MODEL_PATH}.")

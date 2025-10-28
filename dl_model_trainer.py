@@ -44,7 +44,7 @@ class DLModelTrainer:
         start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
 
-        for ticker in ModelTrainer.TARGET_COINS:  # ModelTrainer의 TARGET_COINS 사용
+        for ticker in self.TARGET_COINS:  # DLModelTrainer의 TARGET_COINS 사용
             filename_feather = ticker.replace("/", "_") + "_1h.feather"
             filepath_feather = os.path.join(cache_dir, filename_feather)
 

@@ -4,6 +4,8 @@ import numpy as np
 import logging
 import shutil
 from datetime import datetime
+import joblib
+import pandas_ta as ta
 
 
 class DataPipeline:
@@ -48,8 +50,6 @@ class DataPipeline:
         df["BBP_20_2.0"] = (df["close"] - df["BBL_20_2.0"]) / (
             df["BBU_20_2.0"] - df["BBL_20_2.0"]
         )
-        df.ta.adx(length=14, append=True)
-        df.ta.atr(length=14, append=True)
         df.ta.ema(length=20, append=True)
         df.ta.ema(length=60, append=True)
 

@@ -17,8 +17,6 @@ def get_top_10_coins():
         "KRW-LINK",
         "KRW-ETC",
         "KRW-LTC",
-        "KRW-SEI",
-        "KRW-SUI"
     ]
     
     print(f"[SUCCESS] Selected Fixed Universe: {fixed_universe}")

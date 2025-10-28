@@ -24,11 +24,9 @@ class RLAgentTrainer:
         print("모든 타겟 코인의 데이터 로딩 중...")
         
         # Ensure preprocessed_data.pkl is up-to-date
-        # This will call the run method of DataPreprocessor, which handles caching
-        self.preprocessor.run() 
-
-        # Load the combined preprocessed data
+        # This will call the run_and_save_to_pickle method of DataPreprocessor, which handles caching
         data_path = os.path.join(self.preprocessor.cache_dir, "preprocessed_data.pkl")
+        self.preprocessor.run_and_save_to_pickle(data_path)
         if not os.path.exists(data_path):
             print(f"오류: 전처리된 데이터 파일 '{data_path}'을 찾을 수 없습니다.")
             return None

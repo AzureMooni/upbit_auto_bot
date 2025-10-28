@@ -4,12 +4,14 @@ import os
 from stable_baselines3 import PPO
 from gymnasium.wrappers import FlattenObservation
 
-from rl_environment import TradingEnv
+from rl_environment import PortfolioTradingEnv
+
+from constants import SCALPING_TARGET_COINS
 
 # --- Constants ---
 DATA_PATH = "cache/preprocessed_data.pkl"
 MODEL_PATH = "foundational_agent.zip"
-SYMBOL = "KRW-BTC"
+SYMBOL = SCALPING_TARGET_COINS[0] # Use the first coin from the global list
 
 def run_rl_backtest():
     """
@@ -23,11 +25,15 @@ def run_rl_backtest():
     model = PPO.load(MODEL_PATH)
 
     print(f"백테스트용 데이터를 로드합니다: {DATA_PATH}")
-    df = pd.read_pickle(DATA_PATH)
+    all_data = pd.read_pickle(DATA_PATH)
     
+    if SYMBOL not in all_data:
+        print(f"오류: {SYMBOL}에 대한 데이터가 전처리된 데이터 파일에 없습니다.")
+        return
+
     print("거래 환경을 설정합니다...")
-    env = TradingEnv(df, symbol=SYMBOL)
-    env = FlattenObservation(env)
+    env = PortfolioTradingEnv(all_data)
+    # env = FlattenObservation(env) # FlattenObservation is not needed for MultiInputPolicy
 
     # --- 시뮬레이션 루프 ---
     print("백테스트 시뮬레이션을 시작합니다...")
@@ -53,13 +59,13 @@ def run_rl_backtest():
         print("  No trades were executed.")
     else:
         trade_df = pd.DataFrame(trade_history)
-        coin_symbol = SYMBOL.split('-')[1]
         for i, trade in trade_df.iterrows():
             print(
                 f"  - [{pd.to_datetime(trade['timestamp']).strftime('%Y-%m-%d %H:%M')}] "
                 f"{trade['action']:<4} | "
+                f"Symbol: {trade['symbol'] if 'symbol' in trade else 'N/A'} | "
                 f"Price: {trade['price']:>11,.0f} KRW | "
-                f"Amount: {trade['amount']:<10.6f} {coin_symbol}"
+                f"Amount: {trade['amount']:<10.6f}"
             )
     print("-" * 50)
 
@@ -75,19 +81,22 @@ def run_rl_backtest():
     mdd = daily_drawdown.cummin().iloc[-1] * 100
     daily_returns = report_df["portfolio_value"].pct_change()
     
+    # Get the DataFrame for the traded symbol for benchmark calculation
+    traded_df = all_data[SYMBOL]
+
     # 거래 통계 계산
     total_trades = len(trade_history)
-    num_days = (df.index[-1] - df.index[0]).days
+    num_days = (traded_df.index[-1] - traded_df.index[0]).days
     avg_trades_per_day = total_trades / num_days if num_days > 0 else 0
     
     sharpe_ratio = (daily_returns.mean() / daily_returns.std()) * np.sqrt(365*24) if daily_returns.std() > 0 else 0 # 시간봉 기준 연율화
 
     # 벤치마크 (Buy & Hold) 성과
-    benchmark_return = (df['close'].iloc[-1] / df['close'].iloc[0] - 1) * 100
+    benchmark_return = (traded_df['close'].iloc[-1] / traded_df['close'].iloc[0] - 1) * 100
     final_benchmark_value = initial_capital * (1 + benchmark_return / 100)
 
     print("\n--- 📊 RL 에이전트 최종 성과 보고 ---")
-    print(f"  - 시뮬레이션 기간: {df.index[0].date()} ~ {df.index[-1].date()}")
+    print(f"  - 시뮬레이션 기간: {traded_df.index[0].date()} ~ {traded_df.index[-1].date()}")
     print("-" * 50)
     print("  [RL Agent 성과]")
     print(f"  - 최종 자산: {final_portfolio_value:,.0f} KRW")

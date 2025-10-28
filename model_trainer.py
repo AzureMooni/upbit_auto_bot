@@ -6,8 +6,7 @@ from sklearn.metrics import accuracy_score, classification_report
 import joblib
 import os
 
-# 고빈도 스캘핑을 위한 타겟 코인 목록
-SCALPING_TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW"]
+from constants import SCALPING_TARGET_COINS
 
 
 class ModelTrainer:

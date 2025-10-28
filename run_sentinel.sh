@@ -11,4 +11,6 @@ mkdir -p logs
 # 모든 표준 출력(stdout)과 표준 에러(stderr)를 로그 파일에 추가합니다.
 echo "
 --- Running Sentinel Job at $(date) ---" >> logs/sentinel.log
+source venv/bin/activate
 python sentinel.py >> logs/sentinel.log 2>&1
+deactivate

@@ -36,10 +36,12 @@ if [ ! -d "venv" ]; then
 fi
 source venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r runtime-requirements.txt
 
 # --- 4. Run Application in Background ---
 echo "[DEPLOY] Running the application in the background..."
+
+mkdir -p logs
 
 # Find and kill the old process if it's running
 PROCESS_NAME=$APP_SCRIPT

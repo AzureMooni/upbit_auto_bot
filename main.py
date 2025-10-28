@@ -10,7 +10,8 @@ import shutil
 from dotenv import load_dotenv
 
 # --- New High-Frequency System Modules --- #
-from ccxt_downloader import CCXTDataDownloader, SCALPING_TARGET_COINS
+from constants import SCALPING_TARGET_COINS
+from ccxt_downloader import CCXTDataDownloader
 from preprocessor import DataPreprocessor
 from model_trainer import ModelTrainer
 from live_trader import LiveTrader

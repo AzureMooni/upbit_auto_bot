@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from rl_environment import TradingEnv
+from rl_environment import PortfolioTradingEnv
 
 
 class RLModelTrainer:

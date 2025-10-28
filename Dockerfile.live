@@ -12,9 +12,14 @@ COPY runtime-requirements.txt .
 RUN pip install --no-cache-dir -r runtime-requirements.txt
 
 # Copy necessary source code for live trading
-COPY main.py .
-COPY live_trader.py .
-COPY preprocessor.py . # Needed by live_trader
+COPY main.py \
+     live_trader.py \
+     universe_manager.py \
+     sentiment_analyzer.py \
+     market_regime_detector.py \
+     risk_control_tower.py \
+     execution_engine_interface.py \
+     constants.py ./
 COPY core/ ./core/
 
 # The model will be mounted as a volume, not copied.

@@ -11,3 +11,7 @@ lightgbm
 google-generativeai
 pyjwt==2.3.0
 tensorflow
+pandas
+numpy
+gymnasium
+torch

@@ -4,3 +4,7 @@ pandas
 git+https://github.com/aarigs/pandas-ta.git
 python-dotenv
 pyarrow
+stable-baselines3
+torch
+numpy
+gymnasium
