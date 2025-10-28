@@ -16,7 +16,6 @@ class CCXTDataDownloader:
         self, ticker: str, timeframe: str, start_date_str: str = None, end_date_str: str = None
     ) -> pd.DataFrame | None:
         print(f"  [pyupbit] Downloading {ticker} {timeframe} data...")
-        pyupbit.set_enable_trade_api(False) # Explicitly disable trade API for data download
         try:
             # pyupbit uses interval='minute60' for 1h timeframe
             interval_map = {'1h': 'minute60'}
