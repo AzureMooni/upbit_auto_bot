@@ -9,7 +9,7 @@ on:
 
 # 워크플로우 전체에서 사용할 환경 변수
 env:
-  AWS_REGION: ap-southeast-1          # EC2 인스턴스가 있는 리전
+  AWS_REGION: ap-northeast-2          # EC2 인스턴스가 있는 리전
   ECR_REPOSITORY: ai-commander-v2     # AWS ECR에 생성할 이미지 저장소 이름
 
 # 실행할 작업들
