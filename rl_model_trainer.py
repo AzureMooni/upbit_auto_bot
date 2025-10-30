@@ -2,9 +2,13 @@ import os
 import shutil
 import pandas as pd
 import numpy as np
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from rl_environment import PortfolioTradingEnv
+
+# CPU 최적화를 위해 PyTorch 스레드 수를 1로 고정
+torch.set_num_threads(1)
 
 
 class RLModelTrainer:
@@ -58,7 +62,7 @@ class RLModelTrainer:
 
         # 3. PPO 모델 정의
         model = PPO(
-            "MlpPolicy", vec_env, verbose=1, tensorboard_log=self.tensorboard_log_path
+            "MlpPolicy", vec_env, verbose=1, tensorboard_log=None
         )
 
         # 4. 모델 훈련

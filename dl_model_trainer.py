@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1' # Force TensorFlow to use CPU only
 from datetime import datetime, timedelta
 import joblib
 from sklearn.preprocessing import MinMaxScaler
