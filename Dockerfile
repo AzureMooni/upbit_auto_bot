@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 4. Install OPTIMIZED Python Dependencies (CPU-Only)
+# --- FIX: Install CPU-only torch FIRST from the extra index ---
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
+
+# --- THEN install all other requirements from default PyPI ---
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install pyjwt==2.3.0
@@ -19,14 +23,8 @@ RUN pip install pyupbit
 # 5. Copy ALL Application Code
 COPY . .
 
-# Run the data fetch/preprocess/train pipeline to generate models
-RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
-
-# 6. --- Build-Time Training (The Fix) ---
-# Create cache directory (fixes FileNotFoundError in preprocessor)
+# 6. --- Build-Time Training (Stable Strategy) ---
 RUN mkdir -p /app/cache
-
-# Run the trainer to fetch, preprocess, and train, generating all .pkl, .zip, and .json files
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # 7. Final Entrypoint
