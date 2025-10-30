@@ -16,7 +16,7 @@ class CCXTDataDownloader:
     def download_ohlcv(
         self, ticker="BTC/KRW", interval="1h", since=None, limit=1000
     ) -> Union[pd.DataFrame, None]:
-        print(f"  [pyupbit] Downloading {ticker} {timeframe} data...")
+        print(f"  [pyupbit] Downloading {ticker} {interval} data...")
         try:
             # pyupbit uses interval='minute60' for 1h timeframe
             interval_map = {'1h': 'minute60'}
