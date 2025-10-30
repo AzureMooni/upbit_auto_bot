@@ -6,14 +6,17 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
 
+# This now correctly imports the preprocessor
 from preprocessor import DataPreprocessor
+
+# This now correctly imports the SimpleTradingEnv
 from trading_env_simple import SimpleTradingEnv
 
 # --- Constants ---
 LOOKBACK_WINDOW = 50
 DATA_PATH = "cache/preprocessed_data.pkl"
 LOG_DIR = "foundational_rl_tensorboard_logs/"
-MODEL_SAVE_PATH = "foundational_agent.zip" # Single model
+MODEL_SAVE_PATH = "foundational_agent.zip"  # Single model
 STATS_SAVE_PATH = "specialist_stats.json"
 
 def train_foundational_agent(total_timesteps=100000):

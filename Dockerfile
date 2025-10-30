@@ -25,6 +25,7 @@ COPY . .
 
 # 6. --- Build-Time Training (Stable Strategy) ---
 RUN mkdir -p /app/cache
+# Run the trainer to fetch, preprocess, and train, generating all .pkl, .zip, and .json files
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # 7. Final Entrypoint

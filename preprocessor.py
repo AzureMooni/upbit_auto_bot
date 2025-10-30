@@ -10,7 +10,8 @@ from ccxt_downloader import CCXTDataDownloader
 class DataPreprocessor:
     def __init__(self, target_coins=None, interval="1h"):
         self.target_coins = target_coins if target_coins is not None else [
-            "KRW-BTC", "KRW-ETH", "KRW-SOL", "KRW-XRP", "KRW-DOGE", "KRW-AVAX", "KRW-LINK", "KRW-ADA", "KRW-ETC", "KRW-LTC"
+            "KRW-BTC", "KRW-ETH", "KRW-SOL", "KRW-XRP", "KRW-DOGE",
+            "KRW-AVAX", "KRW-LINK", "KRW-ADA", "KRW-ETC", "KRW-LTC"
         ]
         self.interval = interval
         self.cache_dir = "cache"

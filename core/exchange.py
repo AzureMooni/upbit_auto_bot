@@ -40,7 +40,6 @@ class UpbitService:
     async def get_all_balances(self):
         try:
             balances = await self.exchange.fetch_balance()
-            # FIX: 'info' is the float, not info['free']
             return {
                 ticker: {'balance': info} 
                 for ticker, info in balances['free'].items() if info > 0
@@ -52,7 +51,6 @@ class UpbitService:
 
     async def get_current_price(self, ticker: str):
         try:
-            # FIX: Use 'KRW-BTC' format directly
             return (await self.exchange.fetch_ticker(ticker))['last']
         except Exception as e:
             logger.warning(f"[WARN] {ticker} 현재가 조회 실패: {e}")
@@ -60,7 +58,6 @@ class UpbitService:
 
     async def get_ohlcv(self, ticker: str, timeframe='1h', limit=200):
         try:
-            # FIX: Use 'KRW-BTC' format directly
             ohlcv = await self.exchange.fetch_ohlcv(ticker, timeframe=timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
