@@ -7,9 +7,6 @@ import traceback
 logger = logging.getLogger(__name__)
 
 class UpbitService:
-    """ Manages all API interactions with the Upbit exchange using ccxt.
-    This version uses the correct ticker format (e.g., 'KRW-BTC') and correctly parses balance data.
-    """
     def __init__(self, access_key: str, secret_key: str):
         self.exchange = ccxt.upbit({
             'apiKey': access_key,
@@ -30,7 +27,6 @@ class UpbitService:
     async def close(self):
         if self.exchange:
             await self.exchange.close()
-            print("Upbit exchange connection closed.")
 
     async def get_balance(self, currency: str):
         try:
@@ -44,8 +40,7 @@ class UpbitService:
     async def get_all_balances(self):
         try:
             balances = await self.exchange.fetch_balance()
-            # --- FIX 1 (TypeError): Change info['free'] to info ---
-            # The 'info' variable is already the float value (the balance).
+            # FIX: 'info' is the float, not info['free']
             return {
                 ticker: {'balance': info} 
                 for ticker, info in balances['free'].items() if info > 0
@@ -57,8 +52,7 @@ class UpbitService:
 
     async def get_current_price(self, ticker: str):
         try:
-            # --- FIX 2 (Ticker Format): Use ticker directly ---
-            # ccxt's Upbit adapter correctly handles the 'KRW-LTC' format.
+            # FIX: Use 'KRW-BTC' format directly
             return (await self.exchange.fetch_ticker(ticker))['last']
         except Exception as e:
             logger.warning(f"[WARN] {ticker} 현재가 조회 실패: {e}")
@@ -66,7 +60,7 @@ class UpbitService:
 
     async def get_ohlcv(self, ticker: str, timeframe='1h', limit=200):
         try:
-            # --- FIX 2 (Ticker Format): Use ticker directly ---
+            # FIX: Use 'KRW-BTC' format directly
             ohlcv = await self.exchange.fetch_ohlcv(ticker, timeframe=timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
@@ -79,7 +73,6 @@ class UpbitService:
     async def create_market_buy_order(self, ticker, amount_krw):
         print(f"  - [EXEC] {ticker} 시장가 매수 주문 (금액: {amount_krw:.0f} KRW)")
         try:
-            # --- FIX 2 (Ticker Format): Use ticker directly ---
             order = await self.exchange.create_market_buy_order_with_cost(ticker, amount_krw)
             print(f"  - [SUCCESS] 매수 주문 성공, ID: {order.get('id')}")
             return order
@@ -90,7 +83,6 @@ class UpbitService:
     async def create_market_sell_order(self, ticker, amount_coin):
         print(f"  - [EXEC] {ticker} 시장가 매도 주문 (수량: {amount_coin})")
         try:
-            # --- FIX 2 (Ticker Format): Use ticker directly ---
             order = await self.exchange.create_market_sell_order(ticker, amount_coin)
             print(f"  - [SUCCESS] 매도 주문 성공, ID: {order.get('id')}")
             return order
