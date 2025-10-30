@@ -7,6 +7,8 @@ class RiskControlTower:
     AI 위험 관리 위원회. 모든 거래 결정을 최종 승인하고 자본을 배분하며,
     포트폴리오의 위험을 총괄하는 중앙 통제 모듈.
     """
+    MIN_INVESTMENT_FRACTION = 0.01  # 최소 투자 비율
+    MAX_KELLY_ADJUSTMENT = 0.5      # 켈리 비율에 적용할 최대 조정값
 
     def __init__(self, mdd_threshold: float = -0.15):
         """
@@ -66,7 +68,11 @@ class RiskControlTower:
             float: 최종적으로 결정된 투자 자본 비율 (0.0 ~ 1.0).
         """
         # 1. 켈리 비율 계산
-        win_loss_ratio = avg_profit / avg_loss if avg_loss > 0 else 1.0
+        if avg_profit <= 0 or avg_loss <= 0:
+            win_loss_ratio = 1.0
+        else:
+            win_loss_ratio = avg_profit / avg_loss
+
         kelly_fraction = self.risk_manager.get_position_size_pct(
             win_rate, win_loss_ratio
         )
@@ -75,10 +81,8 @@ class RiskControlTower:
             return 0.0
 
         # 2. 확신도와 감성 지수를 이용한 동적 조정
-        # 감성 지수가 긍정적일수록(>0) 베팅 강도를 높이고, 부정적일수록(<0) 낮춤
         sentiment_factor = (1 + sentiment_score) / 2  # 0.0 ~ 1.0 사이로 정규화
 
-        # 최종 투자 비율 = 기본 켈리 비율 * 예측 확신도 * 감성 지수 팩터
         final_fraction = kelly_fraction * prediction_confidence * sentiment_factor
 
         print(
@@ -86,10 +90,10 @@ class RiskControlTower:
         )
         print(f"  - [RCT] 최종 투자 비율: {final_fraction:.4f}")
 
-        # 너무 작은 규모의 거래 방지 및 최대 비율 제한 (예: 켈리값의 50%까지만, 최대 25%)
-        capped_fraction = min(final_fraction, kelly_fraction * 0.5, 0.25)
+        # 안전장치: 너무 작은 규모의 거래 방지 및 최대 비율 제한
+        capped_fraction = min(final_fraction, kelly_fraction * self.MAX_KELLY_ADJUSTMENT, self.risk_manager.max_position_pct)
 
-        if capped_fraction < 0.01:  # 최소 투자 비율 (1%) 미만이면 거래하지 않음
+        if capped_fraction < self.MIN_INVESTMENT_FRACTION:
             print(
                 f"  - [RCT] 조정된 비율({capped_fraction:.4f})이 최소 투자 비율 미만이라 거래를 건너뜁니다."
             )

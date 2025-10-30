@@ -136,35 +136,41 @@ class LiveTrader:
                 print('🚨 모든 거래가 중단되었습니다. 시스템을 종료합니다.')
                 break
 
-            # 2. 거래 유니버스 결정
+            # 2. 시장 분석 및 전문가 AI 선택 (사이클당 1회 실행)
+            print(f"""
+{pd.Timestamp.now()}: 전체 시장 분석 시작...""")
+            btc_df = await self.upbit_service.get_ohlcv('KRW-BTC', '1h', 200)
+            if btc_df is None:
+                print("[ERROR] BTC 데이터 조회 실패. 다음 사이클까지 대기합니다.")
+                await asyncio.sleep(600)
+                continue
+
+            short_sma = btc_df['close'].rolling(window=20).mean().iloc[-1]
+            long_sma = btc_df['close'].rolling(window=50).mean().iloc[-1]
+            current_regime = 'Sideways'
+            if short_sma > long_sma * 1.01: current_regime = 'Bullish'
+            elif short_sma < long_sma * 0.99: current_regime = 'Bearish'
+
+            agent_to_use = self.agents.get(current_regime)
+            if not agent_to_use:
+                print(f'경고: 현재 시장({current_regime})을 담당할 AI 에이전트가 없습니다. (Sideways 모델로 대체)')
+                agent_to_use = self.agents.get('Sideways') # Fallback
+                if not agent_to_use:
+                    print(f'[ERROR] 대체 모델도 없습니다. 사이클 건너뛰기.')
+                    await asyncio.sleep(600)
+                    continue
+            
+            print(f'  - 시장 진단: {current_regime}, 담당 전문가: [Foundational] Agent')
+
+            # 3. 거래 유니버스 결정
             universe = get_top_10_coins()
             
-            # 3. 각 자산에 대한 거래 결정
+            # 4. 각 자산에 대한 거래 결정
             for symbol in universe:
                 print(f"""
-{pd.Timestamp.now()}: [{symbol}] 분석 시작...""")
+[{symbol}] 분석 시작...""")
                 
-                # 3a. 시장 분석 및 전문가 AI 선택
-                btc_df = await self.upbit_service.get_ohlcv('KRW-BTC', '1h', 200)
-                if btc_df is None: continue
-                
-                short_sma = btc_df['close'].rolling(window=20).mean().iloc[-1]
-                long_sma = btc_df['close'].rolling(window=50).mean().iloc[-1]
-                current_regime = 'Sideways'
-                if short_sma > long_sma * 1.01: current_regime = 'Bullish'
-                elif short_sma < long_sma * 0.99: current_regime = 'Bearish'
-                
-                agent_to_use = self.agents.get(current_regime)
-                if not agent_to_use:
-                    print(f'경고: [{symbol}]을(를) 담당할 AI 에이전트가 없습니다. (Sideways 모델로 대체)')
-                    agent_to_use = self.agents.get('Sideways') # Fallback
-                    if not agent_to_use:
-                       print(f'[ERROR] 대체 모델도 없습니다. 사이클 건너뛰기.')
-                       continue
-                       
-                print(f'  - 시장 진단: {current_regime}, 담당 전문가: [Foundational] Agent')
-
-                # 3b. 데이터 준비 및 AI 예측
+                # 4a. 데이터 준비 및 AI 예측
                 target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 200)
                 if target_df is None: continue
                 
@@ -174,7 +180,6 @@ class LiveTrader:
                     continue
 
                 obs = processed_df.tail(50).to_numpy()
-                # The environment is not needed for prediction with a loaded model
                 action_tensor, _ = agent_to_use.predict(obs, deterministic=True)
                 
                 obs_tensor = torch.as_tensor(obs).float()
@@ -185,12 +190,12 @@ class LiveTrader:
                 predicted_action = action_map.get(int(action_tensor), 'Hold')
                 print(f'  - AI 예측: {predicted_action} (확신도: {confidence:.2%})')
 
-                # 3c. 감성 분석
+                # 4b. 감성 분석
                 sentiment_score = 0.5 # 기본값
                 if self.sentiment_analyzer:
                     sentiment_score, _ = self.sentiment_analyzer.get_sentiment_score(symbol)
                 
-                # 3d. 위험 관리 위원회(RCT)에 최종 결정 요청
+                # 4c. 위험 관리 위원회(RCT)에 최종 결정 요청
                 if predicted_action == 'Buy':
                     stats = self.specialist_stats[current_regime]
                     win_rate = stats['wins'] / stats['trades'] if stats['trades'] > 10 else 0.5
