@@ -65,7 +65,7 @@ def train_foundational_agent(
         "MlpPolicy",
         vec_env,
         verbose=1,
-        tensorboard_log=log_dir,
+        tensorboard_log=None,
         n_steps=2048,
         batch_size=64,
         n_epochs=10
