@@ -1,20 +1,21 @@
-import pyupbit
+from typing import Union
+
+import ccxt
 import pandas as pd
-import time
-import os
 from datetime import datetime, timedelta
 
+
 class CCXTDataDownloader:
-    """ Uses pyupbit to download OHLCV data from Upbit. """
-    def __init__(self, limit: int = 200):
-        self.data_dir = "data"
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-        self.limit = limit
+    """
+    ccxt 라이브러리를 사용하여 업비트의 OHLCV 데이터를 다운로드하는 클래스
+    """
+
+    def __init__(self):
+        self.exchange = ccxt.upbit()
 
     def download_ohlcv(
-        self, ticker: str, timeframe: str, start_date_str: str = None, end_date_str: str = None
-    ) -> pd.DataFrame | None:
+        self, ticker="BTC/KRW", interval="1h", since=None, limit=1000
+    ) -> Union[pd.DataFrame, None]:
         print(f"  [pyupbit] Downloading {ticker} {timeframe} data...")
         try:
             # pyupbit uses interval='minute60' for 1h timeframe

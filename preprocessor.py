@@ -1,3 +1,5 @@
+from typing import Union
+
 import pandas as pd
 import pandas_ta as ta
 import os
@@ -20,7 +22,7 @@ class DataPreprocessor:
         os.makedirs(self.cache_dir, exist_ok=True)
         self.data_downloader = CCXTDataDownloader()
 
-    def _preprocess_single_ticker(self, ticker: str) -> pd.DataFrame | None:
+    def _preprocess_single_ticker(self, ticker: str) -> Union[pd.DataFrame, None]:
         print(f"[{ticker}] 데이터 로딩...")
         file_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_').replace('KRW-','')}_{self.interval}.feather")
         

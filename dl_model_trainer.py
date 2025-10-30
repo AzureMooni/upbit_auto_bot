@@ -1,3 +1,4 @@
+from typing import Union
 import pandas as pd
 import numpy as np
 import os
@@ -246,7 +247,7 @@ class DLModelTrainer:
         print("LSTM model or scaler files not found.")
         return False
 
-    def predict_proba(self, df_ohlcv: pd.DataFrame) -> np.ndarray | None:
+    def predict_proba(self, df_ohlcv: pd.DataFrame) -> Union[np.ndarray, None]:
         """
         데이터 파이프라인을 사용하여 데이터를 처리하고, [관망, 매수, 매도] 확률을 예측합니다.
         """
