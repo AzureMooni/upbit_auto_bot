@@ -5,7 +5,7 @@
 set -e
 
 # 1. 환경 변수 (ECR 주소)
-AWS_ACCOUNT_ID="853452246030"
+AWS_ACCOUNT_ID="052407072916"
 AWS_REGION="ap-northeast-2"
 ECR_REPOSITORY="ai-commander-v2"
 IMAGE_TAG="latest"
