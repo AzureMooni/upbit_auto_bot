@@ -1,5 +1,6 @@
 import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
 from stable_baselines3 import PPO
+from gymnasium.wrappers import FlattenObservation
 
 # --- Core Module Imports ---
 try:
@@ -58,6 +59,7 @@ class LiveTrader:
         try:
             dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
             dummy_env = SimpleTradingEnv(dummy_df)
+            dummy_env = FlattenObservation(dummy_env) # <--- Added this line
         except Exception as e:
             print(f'[WARN] Dummy env for loading failed: {e}')
             dummy_env = None
