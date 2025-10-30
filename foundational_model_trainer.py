@@ -7,7 +7,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
 
 from preprocessor import DataPreprocessor
-from rl_environment import TradingEnv
+from trading_env_simple import SimpleTradingEnv
 
 # --- Constants ---
 LOOKBACK_WINDOW = 50
@@ -37,7 +37,7 @@ def train_foundational_agent(total_timesteps=100000):
     df.sort_index(inplace=True) 
 
     print("거래 환경을 설정합니다...")
-    env = TradingEnv(df, lookback_window=LOOKBACK_WINDOW)
+    env = SimpleTradingEnv(df, lookback_window=LOOKBACK_WINDOW)
     env = FlattenObservation(env)
     vec_env = DummyVecEnv([lambda: env])
 
