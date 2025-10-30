@@ -57,9 +57,10 @@ class LiveTrader:
             raise Exception(f'Model file not found: {model_path}')
 
         try:
-            dummy_df = pd.DataFrame(np.random.rand(100, 21), columns=[f'f{i}' for i in range(21)])
+            # Changed 21 to 11 to match the assumed 11 features of the trained model
+            dummy_df = pd.DataFrame(np.random.rand(100, 11), columns=[f'f{i}' for i in range(11)])
             dummy_env = SimpleTradingEnv(dummy_df)
-            dummy_env = FlattenObservation(dummy_env) # <--- Added this line
+            dummy_env = FlattenObservation(dummy_env)
         except Exception as e:
             print(f'[WARN] Dummy env for loading failed: {e}')
             dummy_env = None
