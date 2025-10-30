@@ -10,7 +10,7 @@ lightgbm
 google-generativeai
 
 # --- CPU-Only Torch (Saves Gigabytes) ---
---index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
 torchaudio
