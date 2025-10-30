@@ -19,6 +19,9 @@ RUN pip install pyupbit
 # 5. Copy ALL Application Code
 COPY . .
 
+# Run the data fetch/preprocess/train pipeline to generate models
+RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
+
 # 6. --- Build-Time Training (The Fix) ---
 # Create cache directory (fixes FileNotFoundError in preprocessor)
 RUN mkdir -p /app/cache

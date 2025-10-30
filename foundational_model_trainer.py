@@ -7,6 +7,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from gymnasium.wrappers import FlattenObservation
 
 from preprocessor import DataPreprocessor
+from preprocessor import DataPreprocessor
+from data_fetcher import DataFetcher
+import os
+
 from rl_environment import TradingEnv
 
 # --- Constants ---
@@ -23,10 +27,16 @@ def train_foundational_agent(total_timesteps=100000):
     os.makedirs(LOG_DIR, exist_ok=True)
 
     # --- 1. (THE FIX) Run Preprocessing First ---
+# 1. 데이터 로더 및 전처리기 실행
     print('데이터 로딩 및 전처리 시작...')
-    preprocessor = DataPreprocessor()
-    all_data_dict = preprocessor.run_and_save_to_pickle(DATA_PATH)
+    fetcher = DataFetcher()
+    all_raw_data = fetcher.load_all_data_from_disk_or_api() # 데이터 로드
+    preprocessor = DataPreprocessor(all_raw_data)
+    all_data = preprocessor.run_and_save_to_pickle(DATA_PATH) # 전처리 실행 및 .pkl 파일 저장
     print(f'전처리된 데이터 {DATA_PATH}에 저장 완료.')
+
+    # 2. 저장된 .pkl 파일 다시 읽기 (훈련용)
+    all_data = pd.read_pickle(DATA_PATH)
     # --- End of Fix ---
 
     if not all_data_dict:
