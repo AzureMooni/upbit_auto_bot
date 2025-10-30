@@ -1,1 +1,10 @@
-xgboost scikit-learn git+https://github.com/aarigs/pandas-ta.git ccxt python-dotenv pyarrow stable-baselines3 pyupbit lightgbm google-generativeai
+xgboost
+scikit-learn
+git+https://github.com/aarigs/pandas-ta.git
+ccxt
+python-dotenv
+pyarrow
+stable-baselines3
+pyupbit
+lightgbm
+google-generativeai

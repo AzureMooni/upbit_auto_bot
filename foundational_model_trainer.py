@@ -27,6 +27,7 @@ def train_foundational_agent(total_timesteps=100000):
 
     # --- 1. (THE FIX) Run Preprocessing First ---
     print('데이터 로딩 및 전처리 시작...')
+    # This (correctly) runs the preprocessor which handles its own data fetching
     preprocessor = DataPreprocessor()
     all_data_dict = preprocessor.run_and_save_to_pickle(DATA_PATH)
     print(f'전처리된 데이터 {DATA_PATH}에 저장 완료.')

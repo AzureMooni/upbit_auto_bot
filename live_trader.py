@@ -202,14 +202,14 @@ class LiveTrader:
                             await self.execution_engine.create_market_sell_order(symbol, coin_balance)
                         else:
                             print(f'  - [EXEC] 매도할 {coin_ticker} 코인이 없습니다.')
-                
-                print('\n--- 10분 후 다음 유니버스 사이클 시작 ---')
-                await asyncio.sleep(600)
+            
+            print('\n--- 10분 후 다음 유니버스 사이클 시작 ---')
+            await asyncio.sleep(600)
 
-            except Exception as e:
-                print('[FATAL] 거래 루프 중 치명적 오류 발생:')
-                print(traceback.format_exc())
-                await asyncio.sleep(60)
+        except Exception as e:
+            print('[FATAL] 거래 루프 중 치명적 오류 발생:')
+            print(traceback.format_exc())
+            await asyncio.sleep(60)
 
 async def main_live():
     trader = LiveTrader(capital=1000000)
