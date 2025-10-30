@@ -16,35 +16,36 @@ class CCXTDataDownloader:
     def download_ohlcv(
         self, ticker="BTC/KRW", interval="1h", since=None, limit=1000
     ) -> Union[pd.DataFrame, None]:
-        print(f"  [pyupbit] Downloading {ticker} {interval} data...")
+        if self.exchange.has['fetchOHLCV'] == False:
+            print(f"  [ccxt] {self.exchange.id} does not support fetchOHLCV.")
+            return None
+
+        print(f"  [ccxt] Downloading {ticker} {interval} data...")
         try:
-            # pyupbit uses interval='minute60' for 1h timeframe
-            interval_map = {'1h': 'minute60'}
-            pyupbit_interval = interval_map.get(timeframe, timeframe)
-            
-            print(f"  [pyupbit] Calling get_ohlcv with ticker={ticker}, interval={pyupbit_interval}, count={self.limit * 10})")
-            df = pyupbit.get_ohlcv(ticker, interval=pyupbit_interval, count=self.limit * 10) # Fetch a large count of recent data
-            
-            if df is None:
-                print(f"  [pyupbit] get_ohlcv returned None for {ticker}.")
-                return None
-            if df.empty:
-                print(f"  [pyupbit] get_ohlcv returned empty DataFrame for {ticker}.")
+            ohlcvs = []
+            # If since is not provided, get the most recent data
+            if since is None:
+                ohlcvs = self.exchange.fetch_ohlcv(ticker, interval, limit=limit)
+            else: # Fetch all data since the start date
+                since_timestamp = self.exchange.parse8601(since)
+                while since_timestamp < self.exchange.milliseconds():
+                    limit = 1000 # max limit
+                    ohlcv_segment = self.exchange.fetch_ohlcv(ticker, interval, since=since_timestamp, limit=limit)
+                    if ohlcv_segment is None or len(ohlcv_segment) == 0:
+                        break
+                    ohlcvs.extend(ohlcv_segment)
+                    since_timestamp = ohlcv_segment[-1][0] + 1
+
+            if not ohlcvs:
+                print(f"  [ccxt] No data returned for {ticker}.")
                 return None
 
-            # Filter by date range if provided
-            if start_date_str:
-                start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
-                df = df[df.index >= start_dt]
-            if end_date_str:
-                end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
-                df = df[df.index <= end_dt + timedelta(days=1, microseconds=-1)]
-
-            print(f"  [pyupbit] Successfully downloaded {len(df)} data points for {ticker}.")
-            # pyupbit returns a dataframe with the correct index, so no need for timestamp conversion
-            time.sleep(0.2) # Add a small delay to be respectful to the API
+            df = pd.DataFrame(ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            print(f"  [ccxt] Successfully downloaded {len(df)} data points for {ticker}.")
             return df
 
         except Exception as e:
-            print(f"  [pyupbit] Error downloading {ticker} data: {e}")
+            print(f"  [ccxt] Error downloading {ticker} data: {e}")
             return None
