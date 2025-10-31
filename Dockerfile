@@ -29,4 +29,4 @@ RUN mkdir -p /app/cache
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
 
 # 7. Final Entrypoint
-ENTRYPOINT ["python", "live_trader.py", "$UPBIT_ACCESS_KEY", "$UPBIT_SECRET_KEY"]
+ENTRYPOINT ["bash", "-c", "python live_trader.py $UPBIT_ACCESS_KEY $UPBIT_SECRET_KEY"]
