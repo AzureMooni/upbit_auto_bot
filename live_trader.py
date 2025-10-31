@@ -2,6 +2,8 @@ import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
 from stable_baselines3 import PPO
 from gymnasium.wrappers import FlattenObservation
 
+print("DEBUG: live_trader.py started") # Added for debugging
+
 # --- Core Module Imports ---
 try:
     from universe_manager import get_top_10_coins
