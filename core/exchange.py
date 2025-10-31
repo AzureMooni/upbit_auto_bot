@@ -61,7 +61,7 @@ class UpbitService:
             logger.warning(f"[WARN] {ticker} 현재가 조회 실패: {e}")
             return None
 
-    async def get_ohlcv(self, ticker: str, timeframe='1h', limit=200):
+    async def get_ohlcv(self, ticker: str, timeframe='1h', limit=300): # Changed limit to 300
         try:
             ohlcv = await self.exchange.fetch_ohlcv(ticker, timeframe=timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
