@@ -105,7 +105,7 @@ class LiveTrader:
             if ticker == 'KRW': # Skip KRW as it's the base currency
                 continue
             if balance_info['balance'] > 0:
-                market_ticker = f'KRW-{ticker}' 
+                market_ticker = f'{ticker}/KRW' # Changed to BASE/QUOTE format
                 current_price = await self.upbit_service.get_current_price(market_ticker)
                 if current_price:
                     total_asset_value += balance_info['balance'] * current_price
@@ -120,7 +120,7 @@ class LiveTrader:
                 self.portfolio_history[pd.Timestamp.now()] = net_worth
                 if self.risk_control_tower.check_mdd_circuit_breaker(self.portfolio_history):
                     all_balances = await self.upbit_service.get_all_balances()
-                    holdings_to_liquidate = {f'KRW-{ticker}': info['balance'] for ticker, info in all_balances.items() if info['balance'] > 0 and ticker != 'KRW'}
+                    holdings_to_liquidate = {f'{ticker}/KRW': info['balance'] for ticker, info in all_balances.items() if info['balance'] > 0 and ticker != 'KRW'}
                     await self.execution_engine.liquidate_all_positions(holdings_to_liquidate)
                     print('🚨 모든 거래가 중단되었습니다. 시스템을 종료합니다.')
                     break
@@ -133,7 +133,7 @@ class LiveTrader:
                     print(f'\n{pd.Timestamp.now()}: [{symbol}] 분석 시작...')
                     
                     # 3a. 시장 분석 및 전문가 AI 선택
-                    btc_df = await self.upbit_service.get_ohlcv('KRW-BTC', '1h', 200)
+                    btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 200) # Changed to BTC/KRW
                     if btc_df is None: continue
                     
                     short_sma = btc_df['close'].rolling(window=20).mean().iloc[-1]
@@ -153,7 +153,7 @@ class LiveTrader:
                     print(f'  - 시장 진단: {current_regime}, 담당 전문가: [Foundational] Agent')
 
                     # 3b. 데이터 준비 및 AI 예측
-                    target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 200)
+                    target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 200) # symbol is already in BASE/QUOTE format from universe_manager
                     if target_df is None: continue
                     
                     processed_df = precompute_all_indicators(target_df)
@@ -196,15 +196,15 @@ class LiveTrader:
                             cash_balance = await self.upbit_service.get_balance('KRW') or 0
                             buy_amount_krw = cash_balance * investment_fraction
                             if buy_amount_krw > 5000:
-                                await self.execution_engine.create_market_buy_order(symbol, buy_amount_krw)
+                                await self.execution_engine.create_market_buy_order(symbol, buy_amount_krw) # symbol is already in BASE/QUOTE format
                             else:
                                 print('  - [EXEC] 주문 금액이 최소 기준(5,000 KRW) 미만입니다.')
 
                     elif predicted_action == 'Sell':
-                        coin_ticker = symbol.split('-')[1] # KRW-BTC -> BTC
+                        coin_ticker = symbol.split('/')[0] # BTC/KRW -> BTC
                         coin_balance = await self.upbit_service.get_balance(coin_ticker)
                         if coin_balance and coin_balance > 0:
-                            await self.execution_engine.create_market_sell_order(symbol, coin_balance)
+                            await self.execution_engine.create_market_sell_order(symbol, coin_balance) # symbol is already in BASE/QUOTE format
                         else:
                             print(f'  - [EXEC] 매도할 {coin_ticker} 코인이 없습니다.')
                 

@@ -10,9 +10,9 @@ from ccxt_downloader import CCXTDataDownloader
 class DataPreprocessor:
     def __init__(self, target_coins=None, interval="1h"):
         self.target_coins = target_coins if target_coins is not None else [
-            "KRW-BTC", "KRW-ETH", "KRW-SOL", "KRW-XRP", "KRW-DOGE",
-            "KRW-AVAX", "KRW-LINK", "KRW-ADA", "KRW-ETC"
-        ] # Removed "KRW-LTC"
+            "BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW",
+            "AVAX/KRW", "ADA/KRW", "LINK/KRW", "ETC/KRW"
+        ]
         self.interval = interval
         self.cache_dir = "cache"
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -20,7 +20,7 @@ class DataPreprocessor:
 
     def _preprocess_single_ticker(self, ticker: str) -> pd.DataFrame | None:
         print(f"[{ticker}] 데이터 로딩...")
-        file_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_').replace('KRW-','')}_{self.interval}.feather")
+        file_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_')}_{self.interval}.feather") # Changed to replace '/' with '_'
         
         if not os.path.exists(file_path):
             print(f"[{ticker}] 캐시 파일 없음. 다운로드 시작...")
