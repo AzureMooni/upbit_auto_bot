@@ -51,7 +51,12 @@ class UpbitService:
 
     async def get_current_price(self, ticker: str):
         try:
-            return (await self.exchange.fetch_ticker(ticker))['last']
+            ticker_data = await self.exchange.fetch_ticker(ticker)
+            if ticker_data: # Check if ticker_data is not None
+                return ticker_data['last']
+            else:
+                logger.warning(f"[WARN] {ticker} 현재가 조회 실패: fetch_ticker returned None")
+                return None
         except Exception as e:
             logger.warning(f"[WARN] {ticker} 현재가 조회 실패: {e}")
             return None
