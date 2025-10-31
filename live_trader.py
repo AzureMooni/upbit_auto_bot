@@ -58,17 +58,9 @@ class LiveTrader:
             print('Docker 빌드 과정(build-time training)이 실패했습니다.')
             raise Exception(f'Model file not found: {model_path}')
 
-        try:
-            # Changed 21 to 11 to match the assumed 11 features of the trained model
-            dummy_df = pd.DataFrame(np.random.rand(100, 11), columns=[f'f{i}' for i in range(11)])
-            dummy_env = SimpleTradingEnv(dummy_df)
-            dummy_env = FlattenObservation(dummy_env)
-        except Exception as e:
-            print(f'[WARN] Dummy env for loading failed: {e}')
-            dummy_env = None
-
+        # Removed dummy_env creation and passing it to PPO.load()
         print(f'  - [Foundational] {model_path} 로드 시도...')
-        foundational_model = PPO.load(model_path, env=dummy_env)
+        foundational_model = PPO.load(model_path) # Removed env=dummy_env
         
         regimes = ['Bullish', 'Bearish', 'Sideways']
         for regime in regimes:
