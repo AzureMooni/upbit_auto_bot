@@ -102,6 +102,8 @@ class LiveTrader:
             return krw_balance
 
         for ticker, balance_info in all_balances.items():
+            if ticker == 'KRW': # Skip KRW as it's the base currency
+                continue
             if balance_info['balance'] > 0:
                 market_ticker = f'KRW-{ticker}' 
                 current_price = await self.upbit_service.get_current_price(market_ticker)
