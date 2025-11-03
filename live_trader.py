@@ -23,12 +23,18 @@ except ImportError as e:
     print(traceback.format_exc())
     sys.exit(1)
 
-# --- 1. Load API Keys from Environment Variables ---
-access_key = os.environ.get('UPBIT_ACCESS_KEY')
-secret_key = os.environ.get('UPBIT_SECRET_KEY')
-
-if not access_key or not secret_key:
-    print('[FATAL] API Keys (UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY) were not found in environment variables.')
+# --- 1. Load API Keys ---
+if len(sys.argv) == 3:
+    access_key = sys.argv[1]
+    secret_key = sys.argv[2]
+    print(f'[INFO] API Keys loaded from command-line arguments.')
+elif os.environ.get('UPBIT_ACCESS_KEY') and os.environ.get('UPBIT_SECRET_KEY'):
+    access_key = os.environ.get('UPBIT_ACCESS_KEY')
+    secret_key = os.environ.get('UPBIT_SECRET_KEY')
+    print(f'[INFO] API Keys loaded from environment variables.')
+else:
+    print('[FATAL] API Keys were not provided either as command-line arguments or as environment variables.')
+    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
     sys.exit(1)
 print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
 
