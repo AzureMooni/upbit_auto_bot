@@ -68,13 +68,9 @@ class LiveTrader:
             print('Docker 빌드 과정(build-time training)이 실패했습니다.')
             raise Exception(f'Model file not found: {model_path}')
 
-        # Create a dummy environment to pass to PPO.load()
-        # This can help prevent issues with loading models trained in different environments.
-        dummy_df = pd.DataFrame(np.random.rand(100, 10), columns=[f'col_{i}' for i in range(10)])
-        dummy_env = SimpleTradingEnv(dummy_df)
-
+        # Removed dummy_env creation and passing it to PPO.load()
         print(f'  - [Foundational] {model_path} 로드 시도...')
-        foundational_model = PPO.load(model_path, env=dummy_env)
+        foundational_model = PPO.load(model_path) # Removed env=dummy_env
         
         
         regimes = ['Bullish', 'Bearish', 'Sideways']
@@ -142,7 +138,7 @@ class LiveTrader:
                     print(f'\n{pd.Timestamp.now()}: [{symbol}] 분석 시작...')
                     
                     # 3a. 시장 분석 및 전문가 AI 선택
-                    btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 400) # Changed to BTC/KRW
+                    btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 300) # Changed to BTC/KRW
                     if btc_df is None: continue
                     
                     short_sma = btc_df['close'].rolling(window=20).mean().iloc[-1]
@@ -162,7 +158,7 @@ class LiveTrader:
                     print(f'  - 시장 진단: {current_regime}, 담당 전문가: [Foundational] Agent')
 
                     # 3b. 데이터 준비 및 AI 예측
-                    target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 400) # symbol is already in BASE/QUOTE format from universe_manager
+                    target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 300) # symbol is already in BASE/QUOTE format from universe_manager
                     if target_df is None: continue
                     
                     processed_df = precompute_all_indicators(target_df)
