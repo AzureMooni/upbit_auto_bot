@@ -1,8 +1,12 @@
 import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
+from dotenv import load_dotenv
 from stable_baselines3 import PPO
 from gymnasium.wrappers import FlattenObservation
 
 print("DEBUG: live_trader.py started") # Added for debugging
+
+# --- Load .env file ---
+load_dotenv()
 
 # --- Core Module Imports ---
 try:
