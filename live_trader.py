@@ -19,13 +19,13 @@ except ImportError as e:
     print(traceback.format_exc())
     sys.exit(1)
 
-# --- 1. Load API Keys from Command-Line Arguments ---
-if len(sys.argv) != 3:
-    print('[FATAL] API Keys were not provided as command-line arguments.')
-    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
+# --- 1. Load API Keys from Environment Variables ---
+access_key = os.environ.get('UPBIT_ACCESS_KEY')
+secret_key = os.environ.get('UPBIT_SECRET_KEY')
+
+if not access_key or not secret_key:
+    print('[FATAL] API Keys (UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY) were not found in environment variables.')
     sys.exit(1)
-access_key = sys.argv[1]
-secret_key = sys.argv[2]
 print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
 
 # --- 2. Live Trader Class Definition ---
