@@ -127,7 +127,7 @@ class LiveTrader:
                     print(f'\n{pd.Timestamp.now()}: [{symbol}] 분석 시작...')
                     
                     # 3a. 시장 분석 및 전문가 AI 선택
-                    btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 200) # Changed to BTC/KRW
+                    btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 400) # Changed to BTC/KRW
                     if btc_df is None: continue
                     
                     short_sma = btc_df['close'].rolling(window=20).mean().iloc[-1]
@@ -147,7 +147,7 @@ class LiveTrader:
                     print(f'  - 시장 진단: {current_regime}, 담당 전문가: [Foundational] Agent')
 
                     # 3b. 데이터 준비 및 AI 예측
-                    target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 200) # symbol is already in BASE/QUOTE format from universe_manager
+                    target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 400) # symbol is already in BASE/QUOTE format from universe_manager
                     if target_df is None: continue
                     
                     processed_df = precompute_all_indicators(target_df)
