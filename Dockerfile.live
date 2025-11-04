@@ -11,7 +11,11 @@ RUN useradd --create-home appuser
 COPY runtime-requirements.txt .
 RUN pip install --no-cache-dir -r runtime-requirements.txt
 
-# Copy necessary source code for live trading
+# Install build-time dependencies for model training
+COPY build-requirements.txt .
+RUN pip install --no-cache-dir -r build-requirements.txt
+
+# Copy necessary source code for live trading and training
 COPY main.py \
      live_trader.py \
      universe_manager.py \
@@ -19,10 +23,20 @@ COPY main.py \
      market_regime_detector.py \
      risk_control_tower.py \
      execution_engine_interface.py \
-     constants.py ./
+     constants.py \
+     preprocessor.py \
+     trading_env_simple.py \
+     specialist_trainer.py ./
 COPY core/ ./core/
 
-# The model will be mounted as a volume, not copied.
+# Run the specialist trainer to generate models
+RUN python specialist_trainer.py
+
+# Clean up build-time dependencies and scripts
+RUN pip uninstall -y -r build-requirements.txt
+RUN rm build-requirements.txt specialist_trainer.py
+
+# The models are now part of the image, no need to mount as volume
 
 # Set user and environment
 USER appuser

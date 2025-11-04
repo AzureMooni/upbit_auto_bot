@@ -61,22 +61,19 @@ class LiveTrader:
 
     def _load_agents(self):
         print('\n- 훈련된 전문가 AI 에이전트들을 로드합니다...')
-        model_path = MODEL_SAVE_PATH # 'foundational_agent.zip'
-        
-        if not os.path.exists(model_path):
-            print(f'[FATAL] 치명적 오류: 모델 파일({model_path})이 없습니다.')
-            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-            raise Exception(f'Model file not found: {model_path}')
-
-        # Removed dummy_env creation and passing it to PPO.load()
-        print(f'  - [Foundational] {model_path} 로드 시도...')
-        foundational_model = PPO.load(model_path) # Removed env=dummy_env
-        
-        
+        MODEL_SAVE_PATH_BASE = "specialist_agent_"
         regimes = ['Bullish', 'Bearish', 'Sideways']
         for regime in regimes:
-            self.agents[regime] = foundational_model
-        print(f'  - 모든 시장({regimes})에 기본 모델을 성공적으로 할당했습니다.')
+            model_path = f"{MODEL_SAVE_PATH_BASE}{regime.lower()}.zip"
+            if not os.path.exists(model_path):
+                print(f'[FATAL] 치명적 오류: {regime} 모델 파일({model_path})이 없습니다.')
+                print('Docker 빌드 과정(build-time training)이 실패했거나 모델이 훈련되지 않았습니다.')
+                raise Exception(f'{regime} Model file not found: {model_path}')
+            
+            print(f'  - [{regime}] {model_path} 로드 시도...')
+            self.agents[regime] = PPO.load(model_path)
+        print(f'  - 모든 전문가 AI 모델({regimes})을 성공적으로 로드했습니다.')
+
 
     def _init_analyzer(self):
         print('\n- Gemini 정보 분석가를 준비합니다...')
@@ -141,11 +138,7 @@ class LiveTrader:
                     btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 300) # Changed to BTC/KRW
                     if btc_df is None: continue
                     
-                    short_sma = btc_df['close'].rolling(window=20).mean().iloc[-1]
-                    long_sma = btc_df['close'].rolling(window=50).mean().iloc[-1]
-                    current_regime = 'Sideways'
-                    if short_sma > long_sma * 1.01: current_regime = 'Bullish'
-                    elif short_sma < long_sma * 0.99: current_regime = 'Bearish'
+                    current_regime = get_market_regime(btc_df) # Use the dedicated function
                     
                     agent_to_use = self.agents.get(current_regime)
                     if not agent_to_use:
@@ -155,7 +148,7 @@ class LiveTrader:
                            print(f'[ERROR] 대체 모델도 없습니다. 사이클 건너뛰기.')
                            continue
                            
-                    print(f'  - 시장 진단: {current_regime}, 담당 전문가: [Foundational] Agent')
+                    print(f'  - 시장 진단: {current_regime}, 담당 전문가: [{current_regime}] Agent')
 
                     # 3b. 데이터 준비 및 AI 예측
                     target_df = await self.upbit_service.get_ohlcv(symbol, '1h', 300) # symbol is already in BASE/QUOTE format from universe_manager

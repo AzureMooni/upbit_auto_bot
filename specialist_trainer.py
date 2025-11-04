@@ -1,87 +1,91 @@
 import pandas as pd
-import numpy as np
-from stable_baselines3 import PPO
 import os
 import shutil
+import json
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from gymnasium.wrappers import FlattenObservation
+
+from preprocessor import DataPreprocessor
 from trading_env_simple import SimpleTradingEnv
+from market_regime_detector import get_market_regime_dataframe
 
+# --- Constants ---
+LOOKBACK_WINDOW = 50
+DATA_PATH = "cache/preprocessed_data.pkl"
+LOG_DIR_BASE = "specialist_rl_tensorboard_logs/"
+MODEL_SAVE_PATH_BASE = "specialist_agent_"  # Prefix for specialist models
+STATS_SAVE_PATH = "specialist_stats.json"
 
-def train_specialists(
-    foundational_model_path="foundational_agent.zip",
-    ticker="BTC/KRW",
-    total_timesteps_per_specialist=50000,
-    start_date=None,
-    end_date=None,
-):
-    """
-    마스터 AI를 기반으로 각 시장 상황에 특화된 전문가 AI들을 훈련 (전이학습).
-    전처리된 캐시 데이터를 사용합니다.
-    """
-    if not os.path.exists(foundational_model_path):
-        print(f"오류: 마스터 AI 모델 '{foundational_model_path}'을 찾을 수 없습니다.")
+def train_specialist_agents(total_timesteps=100000):
+    # Clean up existing log directories
+    if os.path.exists(LOG_DIR_BASE):
+        print(f"기존 로그 디렉토리 {LOG_DIR_BASE}를 삭제합니다.")
+        shutil.rmtree(LOG_DIR_BASE)
+    os.makedirs(LOG_DIR_BASE, exist_ok=True)
+
+    # --- 1. Run Preprocessing ---
+    print('데이터 로딩 및 전처리 시작...')
+    preprocessor = DataPreprocessor()
+    all_data_dict = preprocessor.run_and_save_to_pickle(DATA_PATH)
+    print(f'전처리된 데이터 {DATA_PATH}에 저장 완료.')
+
+    if not all_data_dict:
+        print("오류: 전처리된 데이터가 없습니다. 훈련을 중단합니다.")
         return
 
-    print(f"{ticker}의 전처리된 캐시 데이터를 불러옵니다...")
-    cache_path = f"cache/{ticker.replace('/', '_')}_1h.feather"
-    if not os.path.exists(cache_path):
-        print(f"오류: 캐시 파일 '{cache_path}'를 찾을 수 없습니다.")
-        print("먼저 --mode preprocess를 실행하여 캐시를 생성해주세요.")
-        return
+    df = pd.concat(all_data_dict.values(), ignore_index=False)
+    df.sort_index(inplace=True)
 
-    labeled_df = pd.read_feather(cache_path)
-    labeled_df.set_index("timestamp", inplace=True)
-
-    if start_date and end_date:
-        labeled_df = labeled_df[
-            (labeled_df.index >= start_date) & (labeled_df.index <= end_date)
-        ]
-        print(
-            f"훈련 데이터를 {start_date}부터 {end_date}까지로 필터링합니다. ({len(labeled_df)}개 데이터)"
-        )
-
-    print("데이터셋 정보:")
-    print(labeled_df["regime"].value_counts())
-
-    regimes = ["Bullish", "Bearish", "Sideways"]
-    specialist_models = {}
+    # --- 2. Identify Market Regimes ---
+    print("시장 국면을 식별합니다...")
+    df_with_regimes = get_market_regime_dataframe(df)
+    regimes = ['Bullish', 'Bearish', 'Sideways']
+    
+    specialist_stats = {}
 
     for regime in regimes:
-        print(f"\n{'=' * 30}")
-        print(f"{regime} 시장 전문가 AI 훈련 시작...")
-        print(f"{'=' * 30}")
+        print(f"\n--- {regime} 시장 국면 전문가 에이전트 훈련 시작 ---")
+        regime_df = df_with_regimes[df_with_regimes['market_regime'] == regime].copy()
 
-        regime_data = labeled_df[labeled_df["regime"] == regime]
-        print(f"{regime} 데이터셋 크기: {len(regime_data)}")
-
-        if len(regime_data) < 100:
-            print(f"{regime} 시장 데이터가 너무 적어 훈련을 건너뜁니다.")
+        if regime_df.empty or len(regime_df) < LOOKBACK_WINDOW + 200: # Ensure enough data for indicators + lookback
+            print(f"경고: {regime} 시장 국면에 충분한 데이터가 없습니다. 훈련을 건너뜁니다.")
             continue
 
-        env_data = regime_data.select_dtypes(include=np.number)
-        env = SimpleTradingEnv(env_data)
+        # Create a unique log directory for each specialist
+        log_dir = os.path.join(LOG_DIR_BASE, regime.lower())
+        os.makedirs(log_dir, exist_ok=True)
 
-        model = PPO.load(
-            foundational_model_path,
-            env=env,
-            custom_objects={"learning_rate": 0.0001, "n_steps": 2048},
+        print(f"{regime} 시장 국면 거래 환경을 설정합니다...")
+        env = SimpleTradingEnv(regime_df, lookback_window=LOOKBACK_WINDOW)
+        env = FlattenObservation(env)
+        vec_env = DummyVecEnv([lambda: env])
+
+        print(f"{regime} 시장 국면 PPO 모델을 설정하고 훈련을 시작합니다...")
+        model = PPO(
+            "MlpPolicy",
+            vec_env,
+            verbose=1,
+            tensorboard_log=log_dir,
+            n_steps=2048,
+            batch_size=64,
+            n_epochs=10
         )
 
-        log_dir = f"./{regime.lower()}_specialist_logs/"
-        if os.path.exists(log_dir):
-            print(f"기존 로그 디렉토리 {log_dir}를 삭제합니다.")
-            shutil.rmtree(log_dir)
+        print(f"모델 훈련을 시작합니다... (Total Timesteps: {total_timesteps})")
+        model.learn(total_timesteps=total_timesteps)
 
-        model.tensorboard_log = log_dir
-        model.learn(total_timesteps=total_timesteps_per_specialist, tb_log_name="PPO")
+        model_save_path = f"{MODEL_SAVE_PATH_BASE}{regime.lower()}.zip"
+        print(f"훈련이 완료되었습니다. 모델을 다음 경로에 저장합니다: {model_save_path}")
+        model.save(model_save_path)
+        
+        # Initialize stats for the regime
+        specialist_stats[regime] = {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
 
-        specialist_model_name = f"{regime.lower()}_market_agent.zip"
-        model.save(specialist_model_name)
-        specialist_models[regime] = specialist_model_name
-        print(f"{regime} 전문가 AI를 '{specialist_model_name}'으로 저장했습니다.")
-
-    print("\n모든 전문가 AI 훈련이 완료되었습니다.")
-    print("생성된 모델:", specialist_models)
-
+    # Save initial specialist stats
+    with open(STATS_SAVE_PATH, 'w') as f:
+        json.dump(specialist_stats, f, indent=4)
+    print(f"전문가 성과 파일 {STATS_SAVE_PATH} 생성 완료.")
 
 if __name__ == "__main__":
-    train_specialists(total_timesteps_per_specialist=50000)
+    train_specialist_agents(total_timesteps=150000)
