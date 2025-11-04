@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements-builder.txt
 COPY . .
 RUN mkdir -p /app/cache
 RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
+RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python specialist_trainer.py
 RUN echo "Build-Time Training Complete. Model files generated."
 
 # --- STAGE 2: The 'Store' (Final Lightweight Image - Under 500MB) ---
@@ -49,6 +50,7 @@ COPY --from=builder /app/constants.py /app/constants.py
 
 # Copy the GENERATED files (the small "brain" and "memory")
 COPY --from=builder /app/foundational_agent.zip /app/foundational_agent.zip
+COPY --from=builder /app/specialist_agent_*.zip /app/
 COPY --from=builder /app/specialist_stats.json /app/specialist_stats.json
 
 # Final Entrypoint
