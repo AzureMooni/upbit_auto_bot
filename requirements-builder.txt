@@ -1,0 +1,1 @@
+xgboost scikit-learn git+https://github.com/aarigs/pandas-ta.git ccxt python-dotenv pyarrow stable-baselines3 pyupbit lightgbm google-generativeai numpy pandas --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio 

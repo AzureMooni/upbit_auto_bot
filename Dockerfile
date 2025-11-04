@@ -1,32 +1,51 @@
-# 1. Base Image
-FROM python:3.11-slim
+# --- STAGE 1: The 'Factory' (Build & Train) ---
+FROM python:3.11-slim AS builder
 
-# 2. System Dependencies
+# 1. Install System Dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Working Directory
+# 2. Install HEAVY training libraries (CPU-Only)
 WORKDIR /app
-
-# 4. Install OPTIMIZED Python Dependencies (CPU-Only)
-# --- FIX: Install CPU-only torch FIRST from the extra index ---
+COPY requirements-builder.txt .
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
+RUN pip install --no-cache-dir -r requirements-builder.txt
 
-# --- THEN install all other requirements from default PyPI ---
+# 3. Copy all code and Run Training (Model Generation)
+COPY . .
+RUN mkdir -p /app/cache
+RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
+RUN echo "Build-Time Training Complete. Model files generated."
+
+# --- STAGE 2: The 'Store' (Final Lightweight Image - Under 500MB) ---
+FROM python:3.11-slim AS final
+
+# 4. Install LIGHTWEIGHT runtime libraries
+WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install pyjwt==2.3.0
-RUN pip install pyupbit
 
-# 5. Copy ALL Application Code
-COPY . .
+# 5. Copy ONLY the essential files and generated models from the 'Factory' stage
+# The 'final' image will NOT contain the heavy torch/xgboost libraries.
+COPY --from=builder /app/core /app/core
+COPY --from=builder /app/strategies /app/strategies
+COPY --from=builder /app/ccxt_downloader.py /app/ccxt_downloader.py
+COPY --from=builder /app/execution_engine_interface.py /app/execution_engine_interface.py
+COPY --from=builder /app/live_trader.py /app/live_trader.py
+COPY --from=builder /app/market_regime_detector.py /app/market_regime_detector.py
+COPY --from=builder /app/risk_control_tower.py /app/risk_control_tower.py
+COPY --from=builder /app/risk_manager.py /app/risk_manager.py
+COPY --from=builder /app/trading_env_simple.py /app/trading_env_simple.py
+COPY --from=builder /app/universe_manager.py /app/universe_manager.py
+COPY --from=builder /app/sentiment_analyzer.py /app/sentiment_analyzer.py
+COPY --from=builder /app/foundational_model_trainer.py /app/foundational_model_trainer.py
 
-# 6. --- Build-Time Training (Stable Strategy) ---
-RUN mkdir -p /app/cache
-# Run the trainer to fetch, preprocess, and train, generating all .pkl, .zip, and .json files
-RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
+# Copy the GENERATED files (the small "brain" and "memory")
+COPY --from=builder /app/foundational_agent.zip /app/foundational_agent.zip
+COPY --from=builder /app/specialist_stats.json /app/specialist_stats.json
 
-# 7. Final Entrypoint
-ENTRYPOINT ["bash", "-c", "python live_trader.py $UPBIT_ACCESS_KEY $UPBIT_SECRET_KEY"]
+# Final Entrypoint
+ENTRYPOINT ["python", "live_trader.py"]
