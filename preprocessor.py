@@ -39,12 +39,11 @@ class DataPreprocessor:
         df_processed = generate_v_recovery_signals(df_processed)
         df_processed = generate_sideways_signals(df_processed)
         
-        daily_regime = df_processed.apply(get_market_regime, axis=1).rename('regime')
-        df_processed['regime'] = daily_regime.reindex(df_processed.index.date).set_axis(df_processed.index)
-        df_processed['regime'] = df_processed['regime'].ffill()
+        # Standardized regime detection
+        df_processed = get_market_regime_dataframe(df_processed)
         
-        regime_map = {name: i for i, name in enumerate(df_processed['regime'].dropna().unique())}
-        df_processed['regime'] = df_processed['regime'].map(regime_map)
+        regime_map = {name: i for i, name in enumerate(df_processed['market_regime'].dropna().unique())}
+        df_processed['regime'] = df_processed['market_regime'].map(regime_map)
         
         final_features = [
             'open', 'high', 'low', 'close', 'volume',

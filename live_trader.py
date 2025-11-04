@@ -158,7 +158,12 @@ class LiveTrader:
                     btc_df = await self.upbit_service.get_ohlcv('BTC/KRW', '1h', 300) # Changed to BTC/KRW
                     if btc_df is None: continue
                     
-                    current_regime = get_market_regime(btc_df) # Use the dedicated function
+                    # Standardized regime detection
+                    btc_df_with_regime = get_market_regime_dataframe(btc_df)
+                    if btc_df_with_regime.empty:
+                        print('  - 시장 진단 데이터 부족')
+                        continue
+                    current_regime = btc_df_with_regime['market_regime'].iloc[-1]
                     
                     agent_to_use = self.agents.get(current_regime)
                     if not agent_to_use:
