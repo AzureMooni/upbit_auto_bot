@@ -47,11 +47,10 @@ class LiveTrader:
         self.agents = {}
         self.upbit_service = UpbitService(access_key, secret_key)
         self.risk_control_tower = RiskControlTower(mdd_threshold=-0.15)
-        self.execution_engine = UpbitExecutionEngine(self.upbit_service, self.open_positions)
-        self.specialist_stats = self._load_specialist_stats()
         self.portfolio_history = pd.Series(dtype=float)
         self.sentiment_analyzer = None
         self.open_positions = {}
+        self.execution_engine = UpbitExecutionEngine(self.upbit_service, self.open_positions)
 
     async def initialize(self):
         print('🚀 AI 퀀트 펀드 시스템 초기화를 시작합니다...')
