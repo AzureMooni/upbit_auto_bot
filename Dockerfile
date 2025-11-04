@@ -45,6 +45,7 @@ COPY --from=builder /app/universe_manager.py /app/universe_manager.py
 COPY --from=builder /app/sentiment_analyzer.py /app/sentiment_analyzer.py
 COPY --from=builder /app/foundational_model_trainer.py /app/foundational_model_trainer.py
 COPY --from=builder /app/preprocessor.py /app/preprocessor.py
+COPY --from=builder /app/constants.py /app/constants.py
 
 # Copy the GENERATED files (the small "brain" and "memory")
 COPY --from=builder /app/foundational_agent.zip /app/foundational_agent.zip
