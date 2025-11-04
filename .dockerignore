@@ -41,3 +41,4 @@ cache/
 *.txt
 !requirements.txt
 !runtime-requirements.txt
+!requirements-builder.txt
