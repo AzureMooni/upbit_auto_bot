@@ -72,5 +72,10 @@ def train_foundational_agent(total_timesteps=100000):
             json.dump(stats, f)
     print(f"기본 성과 파일 {STATS_SAVE_PATH} 생성 완료.")
 
+from specialist_trainer import train_specialist_agents
+
 if __name__ == "__main__":
+    print("--- Foundational Agent Training ---")
     train_foundational_agent(total_timesteps=150000)
+    print("--- Specialist Agent Training ---")
+    train_specialist_agents(total_timesteps=100000)
