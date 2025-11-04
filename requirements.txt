@@ -1,1 +1,7 @@
-ccxt python-dotenv pyarrow pyupbit google-generativeai pandas numpy 
+ccxt
+python-dotenv
+pyarrow
+pyupbit
+google-generativeai
+pandas
+numpy

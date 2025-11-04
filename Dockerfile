@@ -25,7 +25,7 @@ FROM python:3.11-slim AS final
 # 4. Install LIGHTWEIGHT runtime libraries
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -v -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install pyjwt==2.3.0
 
 # 5. Copy ONLY the essential files and generated models from the 'Factory' stage
