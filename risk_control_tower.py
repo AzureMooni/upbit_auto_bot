@@ -101,3 +101,20 @@ class RiskControlTower:
 
         print(f"  - [RCT] 최종 적용 비율 (안전장치 적용): {capped_fraction:.4f}")
         return capped_fraction
+
+    def check_stop_loss(self, current_price: float, entry_price: float, stop_loss_pct: float) -> bool:
+        """
+        현재 가격, 진입 가격, 손절매 비율을 기반으로 손절매 발동 여부를 결정합니다.
+
+        Args:
+            current_price (float): 현재 자산 가격.
+            entry_price (float): 자산 진입 가격.
+            stop_loss_pct (float): 손절매 비율 (예: 0.05는 5% 손실).
+
+        Returns:
+            bool: 손절매가 발동되어야 하면 True, 아니면 False.
+        """
+        if current_price <= entry_price * (1 - stop_loss_pct):
+            print(f"🚨 손절매 발동! 현재 가격: {current_price}, 진입 가격: {entry_price}, 손절매 비율: {stop_loss_pct:.2%}")
+            return True
+        return False

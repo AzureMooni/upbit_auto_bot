@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from stable_baselines3 import PPO
 from gymnasium.wrappers import FlattenObservation
 
+STOP_LOSS_PCT = 0.05 # 5% 손절매 비율
+
 print("DEBUG: live_trader.py started") # Added for debugging
 
 # --- Load .env file ---
@@ -45,10 +47,11 @@ class LiveTrader:
         self.agents = {}
         self.upbit_service = UpbitService(access_key, secret_key)
         self.risk_control_tower = RiskControlTower(mdd_threshold=-0.15)
-        self.execution_engine = UpbitExecutionEngine(self.upbit_service)
+        self.execution_engine = UpbitExecutionEngine(self.upbit_service, self.open_positions)
         self.specialist_stats = self._load_specialist_stats()
         self.portfolio_history = pd.Series(dtype=float)
         self.sentiment_analyzer = None
+        self.open_positions = {}
 
     async def initialize(self):
         print('🚀 AI 퀀트 펀드 시스템 초기화를 시작합니다...')
@@ -127,8 +130,20 @@ class LiveTrader:
                     print('🚨 모든 거래가 중단되었습니다. 시스템을 종료합니다.')
                     break
 
+                # --- Stop-Loss Check ---
+                for symbol, position_info in list(self.open_positions.items()): # Iterate over a copy
+                    current_price = await self.upbit_service.get_current_price(symbol)
+                    if current_price is None:
+                        print(f"  - [STOP-LOSS] {symbol} 현재 가격을 가져올 수 없습니다. 손절매 확인 건너뜀.")
+                        continue
+
+                    if self.risk_control_tower.check_stop_loss(current_price, position_info['entry_price'], STOP_LOSS_PCT):
+                        print(f"  - [STOP-LOSS] {symbol} 손절매 발동! {position_info['quantity']}개 매도.")
+                        await self.execution_engine.create_market_sell_order(symbol, position_info['quantity'])
+                # --- End Stop-Loss Check ---
+
                 # 2. 거래 유니버스 결정
-                universe = get_top_10_coins()
+                universe = await get_top_10_coins(self.upbit_service)
                 
                 # 3. 각 자산에 대한 거래 결정
                 for symbol in universe:
