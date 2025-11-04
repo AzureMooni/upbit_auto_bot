@@ -54,6 +54,33 @@ def precompute_all_indicators(df: pd.DataFrame):
     # Macro Indicators
     df['SMA_50'] = df['close'].rolling(window=50).mean()
     df['SMA_200'] = df['close'].rolling(window=200).mean()
+
+    # ADX (Average Directional Index)
+    # Calculate Directional Movement (DM)
+    plus_dm = df['high'].diff().where(df['high'].diff() > df['low'].diff(), 0)
+    minus_dm = df['low'].diff().where(df['low'].diff() < df['high'].diff(), 0)
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm > 0] = 0
+
+    # Calculate True Range (TR)
+    high_low = df['high'] - df['low']
+    high_close = np.abs(df['high'] - df['close'].shift())
+    low_close = np.abs(df['low'] - df['close'].shift())
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+
+    # Calculate Smoothed True Range (ATR)
+    atr = tr.ewm(span=14, adjust=False).mean()
+
+    # Calculate Smoothed Directional Movement
+    plus_di = (plus_dm.ewm(span=14, adjust=False).mean() / atr) * 100
+    minus_di = (minus_dm.ewm(span=14, adjust=False).mean() / atr) * 100
+
+    # Calculate Directional Index (DX)
+    dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    df['ADX_14'] = dx.ewm(span=14, adjust=False).mean()
+
+    # NATR (Normalized Average True Range)
+    df['NATR_14'] = (atr / df['close']) * 100
     
     df.dropna(inplace=True)
     return df
