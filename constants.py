@@ -1,1 +1,2 @@
 SCALPING_TARGET_COINS = ["BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW"]
+MODEL_SAVE_PATH = "foundational_agent.zip"

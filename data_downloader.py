@@ -22,24 +22,23 @@ def download_historical_data():
     
     upbit = ccxt.upbit() # No authentication needed for public data
     
-    # Convert start date to milliseconds
-    since = upbit.parse8601(START_DATE)
-
     for ticker in UNIVERSE:
         try:
             print(f"  - Fetching data for {ticker}...")
             symbol = ticker.replace("KRW-", "") + "/KRW"
             all_ohlcv = []
             
-            # Convert start date to milliseconds for each ticker
             since = upbit.parse8601(START_DATE)
+            end_timestamp = upbit.milliseconds()
+
+            while since < end_timestamp:
                 ohlcv = upbit.fetch_ohlcv(symbol, timeframe=TIMEFRAME, since=since)
                 if len(ohlcv):
                     since = ohlcv[-1][0] + (upbit.parse_timeframe(TIMEFRAME) * 1000)
                     all_ohlcv.extend(ohlcv)
+                    print(f"    Fetched {len(ohlcv)} candles, last timestamp: {upbit.iso8601(since)}")
                 else:
                     break
-                print(f"    Fetched {len(ohlcv)} candles, last timestamp: {upbit.iso8601(since)}")
                 time.sleep(0.2) # Respect API rate limits
 
             if not all_ohlcv:

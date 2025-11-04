@@ -3,8 +3,8 @@ import pyupbit
 import os
 from dotenv import load_dotenv
 
-# .env 파일의 경로를 명시적으로 지정
-load_dotenv(dotenv_path="config/.env")
+# .env 파일 로드 (루트 디렉토리 기준)
+load_dotenv()
 
 access_key = os.getenv('UPBIT_ACCESS_KEY')
 secret_key = os.getenv('UPBIT_SECRET_KEY')

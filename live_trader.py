@@ -13,7 +13,7 @@ load_dotenv()
 # --- Core Module Imports ---
 try:
     from universe_manager import get_top_10_coins
-    from foundational_model_trainer import MODEL_SAVE_PATH
+    from constants import MODEL_SAVE_PATH
     from trading_env_simple import SimpleTradingEnv
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
@@ -94,9 +94,15 @@ class LiveTrader:
                 print('  - 성과 데이터 로드 완료.')
                 return stats
         else:
-            print('[FATAL] 성과 데이터 파일(specialist_stats.json)이 없습니다.')
-            print('Docker 빌드 과정(build-time training)이 실패했습니다.')
-            raise Exception(f'Stats file not found: {stats_file}')
+            print(f'[WARN] 성과 데이터 파일({stats_file})이 없어 새로 생성합니다.')
+            stats = {
+                regime: {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
+                for regime in ['Bullish', 'Bearish', 'Sideways']
+            }
+            with open(stats_file, 'w') as f:
+                json.dump(stats, f, indent=4)
+            print('  - 기본 성과 데이터 파일 생성 완료.')
+            return stats
 
     async def get_total_balance(self) -> float:
         krw_balance = await self.upbit_service.get_balance('KRW') or 0

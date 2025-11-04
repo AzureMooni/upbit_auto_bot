@@ -9,12 +9,12 @@ from gymnasium.wrappers import FlattenObservation
 # FIX: Correct imports for a clean environment
 from preprocessor import DataPreprocessor
 from trading_env_simple import SimpleTradingEnv
+from constants import MODEL_SAVE_PATH, SCALPING_TARGET_COINS
 
 # --- Constants ---
 LOOKBACK_WINDOW = 50
 DATA_PATH = "cache/preprocessed_data.pkl"
 LOG_DIR = "foundational_rl_tensorboard_logs/"
-MODEL_SAVE_PATH = "foundational_agent.zip"
 STATS_SAVE_PATH = "specialist_stats.json"
 
 def train_foundational_agent(total_timesteps=100000):

@@ -45,6 +45,7 @@ class CommanderBacktester:
         take_profit_ratio = 1.02
         stop_loss_ratio = 0.99
         trade_amount = capital_for_day
+        TRANSACTION_FEE = 0.0005 # 0.05% fee
 
         for i in range(1, len(df)):
             prev_row = df.iloc[i - 1]
@@ -63,7 +64,7 @@ class CommanderBacktester:
                     or current_row["close"] <= entry_price * stop_loss_ratio
                 ):
                     exit_price = current_row["close"]
-                    pnl += ((exit_price - entry_price) / entry_price) * trade_amount
+                    pnl += ((exit_price - entry_price) / entry_price) * trade_amount * (1 - TRANSACTION_FEE * 2)
                     position_held = False
                     trade_count += 1
         return pnl, trade_count
@@ -234,15 +235,9 @@ if __name__ == "__main__":
     parser.add_argument("--end-date", default="2023-12-31", help="Backtest end date")
     args = parser.parse_args()
 
-    if __name__ == "__main__":
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--start-date", default="2025-09-08", help="Backtest start date")
-        parser.add_argument("--end-date", default="2025-10-08", help="Backtest end date")
-        args = parser.parse_args()
-    
-        commander_backtester = CommanderBacktester(
-            start_date=args.start_date, 
-            end_date=args.end_date, 
-            initial_capital=1_000_000
-        )
-        commander_backtester.run_simulation()
+    commander_backtester = CommanderBacktester(
+        start_date=args.start_date, 
+        end_date=args.end_date, 
+        initial_capital=1_000_000
+    )
+    commander_backtester.run_simulation()
