@@ -2,6 +2,9 @@
 
 FROM python:3.12-slim
 
+ARG UPBIT_ACCESS_KEY
+ARG UPBIT_SECRET_KEY
+
 WORKDIR /app
 
 # Create a non-root user for security
@@ -15,6 +18,10 @@ RUN pip install --no-cache-dir -r runtime-requirements.txt
 COPY build-requirements.txt .
 RUN pip install --no-cache-dir -r build-requirements.txt
 
+# Set environment variables for API keys during build
+ENV UPBIT_ACCESS_KEY=$UPBIT_ACCESS_KEY
+ENV UPBIT_SECRET_KEY=$UPBIT_SECRET_KEY
+
 # Copy necessary source code for live trading and training
 COPY main.py \
      live_trader.py \
@@ -26,15 +33,23 @@ COPY main.py \
      constants.py \
      preprocessor.py \
      trading_env_simple.py \
-     specialist_trainer.py ./
+     specialist_trainer.py \
+     ccxt_downloader.py ./
 COPY core/ ./core/
+
+# Explicitly remove foundational_model_trainer.py to prevent accidental execution
+RUN rm foundational_model_trainer.py || true
 
 # Run the specialist trainer to generate models
 RUN python specialist_trainer.py
 
+# Run the data downloader to pre-download historical data
+ENV DOCKER_BUILD=true # Set environment variable to trigger download in ccxt_downloader.py
+RUN python ccxt_downloader.py
+
 # Clean up build-time dependencies and scripts
 RUN pip uninstall -y -r build-requirements.txt
-RUN rm build-requirements.txt specialist_trainer.py
+RUN rm build-requirements.txt specialist_trainer.py ccxt_downloader.py
 
 # The models are now part of the image, no need to mount as volume
 
