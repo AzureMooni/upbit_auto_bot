@@ -5,3 +5,5 @@ pyupbit
 google-generativeai
 pandas
 numpy
+stable-baselines3
+torch
