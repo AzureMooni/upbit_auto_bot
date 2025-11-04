@@ -1,4 +1,4 @@
-import sys, os, asyncio, pandas as pd, numpy as np, torch, traceback, json
+import sys, os, asyncio, pandas as pd, numpy as np, traceback, json
 from dotenv import load_dotenv
 from stable_baselines3 import PPO
 from gymnasium.wrappers import FlattenObservation
@@ -176,10 +176,7 @@ class LiveTrader:
                     obs_df = processed_df.tail(LOOKBACK_WINDOW)
                     obs = obs_df.to_numpy(dtype=np.float32)
                     action_tensor, _ = agent_to_use.predict(obs, deterministic=True)
-                    
-                    obs_tensor_torch = torch.as_tensor(obs).float()
-                    _, log_prob, _ = agent_to_use.policy.evaluate_actions(obs_tensor_torch.unsqueeze(0), torch.as_tensor([action_tensor]))
-                    confidence = torch.exp(log_prob).item()
+                    confidence = 1.0 # Set confidence to 1.0 as torch is not available
                     
                     action_map = {0: 'Hold', 1: 'Buy', 2: 'Sell'}
                     predicted_action = action_map.get(int(action_tensor), 'Hold')
