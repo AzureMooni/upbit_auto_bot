@@ -35,7 +35,6 @@ Dockerfile
 
 # Documentation, local data, and logs
 README.md
-data/
 cache/
 *.log
 *.txt

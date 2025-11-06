@@ -23,20 +23,23 @@ RUN echo "Build-Time Training Complete. Model files generated."
 # --- STAGE 2: The 'Store' (Final Lightweight Image - Under 500MB) ---
 FROM python:3.12-slim AS final
 
-# 4. Install LIGHTWEIGHT runtime libraries
 WORKDIR /app
-RUN adduser --system --group appuser
-RUN chown -R appuser:appuser /app
-USER appuser
-COPY requirements.txt .
-COPY --from=builder /usr/local/lib/python3.13/site-packages/pandas_ta /usr/local/lib/python3.12/site-packages/pandas_ta
+
+# Set pip target and python path
 ENV PIP_TARGET=/app/pip_packages
-ENV PYTHONPATH=/app/pip_packages:$PYTHONPATH
-RUN mkdir -p /app/pip_packages && \
-    pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-# 5. Copy ONLY the essential files and generated models from the 'Factory' stage
-# The 'final' image will NOT contain the heavy torch/xgboost libraries.
+ENV PYTHONPATH="/app/pip_packages:${PYTHONPATH:+:${PYTHONPATH}}"
+
+# Copy and install requirements as root
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Copy pre-built pandas_ta from builder stage as root
+COPY --from=builder /usr/local/lib/python3.13/site-packages/pandas_ta /usr/local/lib/python3.12/site-packages/pandas_ta
+
+# Now, create the non-root user
+RUN adduser --system --group appuser
+
+# Copy the application files from the builder stage
 COPY --from=builder /app/core /app/core
 COPY --from=builder /app/strategies /app/strategies
 COPY --from=builder /app/ccxt_downloader.py /app/ccxt_downloader.py
@@ -51,11 +54,15 @@ COPY --from=builder /app/sentiment_analyzer.py /app/sentiment_analyzer.py
 COPY --from=builder /app/foundational_model_trainer.py /app/foundational_model_trainer.py
 COPY --from=builder /app/preprocessor.py /app/preprocessor.py
 COPY --from=builder /app/constants.py /app/constants.py
-
-# Copy the GENERATED files (the small "brain" and "memory")
 COPY --from=builder /app/foundational_agent.zip /app/foundational_agent.zip
 COPY --from=builder /app/specialist_agent_*.zip /app/
 COPY --from=builder /app/specialist_stats.json /app/specialist_stats.json
+
+# Change ownership of the app directory to the non-root user
+RUN chown -R appuser:appuser /app
+
+# Switch to the non-root user
+USER appuser
 
 # Final Entrypoint
 ENTRYPOINT ["python", "live_trader.py"]
