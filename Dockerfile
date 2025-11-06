@@ -21,19 +21,14 @@ RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python
 RUN echo "Build-Time Training Complete. Model files generated."
 
 # --- STAGE 2: The 'Store' (Final Lightweight Image - Under 500MB) ---
-FROM debian:bookworm-slim AS final
+FROM python:3.12-slim AS final
 
-# Install Python 3.13 and pip
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.13 \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
-
+# 4. Install LIGHTWEIGHT runtime libraries
 WORKDIR /app
 RUN adduser --system --group appuser
 USER appuser
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends && \
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
     pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 # 5. Copy ONLY the essential files and generated models from the 'Factory' stage
