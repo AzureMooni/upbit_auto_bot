@@ -26,6 +26,7 @@ FROM python:3.12-slim AS final
 # 4. Install LIGHTWEIGHT runtime libraries
 WORKDIR /app
 RUN adduser --system --group appuser
+RUN chown -R appuser:appuser /app
 USER appuser
 COPY requirements.txt .
 COPY --from=builder /usr/local/lib/python3.13/site-packages/pandas_ta /usr/local/lib/python3.12/site-packages/pandas_ta
