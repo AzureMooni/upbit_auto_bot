@@ -28,7 +28,8 @@ WORKDIR /app
 RUN adduser --system --group appuser
 USER appuser
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends git && \
+COPY --from=builder /usr/local/lib/python3.13/site-packages/pandas_ta /usr/local/lib/python3.12/site-packages/pandas_ta
+RUN apt-get update && apt-get install -y --no-install-recommends && \
     pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 # 5. Copy ONLY the essential files and generated models from the 'Factory' stage
