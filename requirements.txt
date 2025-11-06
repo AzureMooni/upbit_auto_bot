@@ -4,8 +4,8 @@ pyarrow
 pyupbit
 google-generativeai==0.8.5
 google-ai-generativelanguage==0.6.15
-pandas<2.0
-numpy<2.0
+pandas==2.3.3
+numpy==2.3.4
 stable-baselines3
 torch
 lightgbm
