@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir -r requirements-builder.txt
 # 3. Copy all code and Run Training (Model Generation)
 COPY . .
 RUN mkdir -p /app/cache
-RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python foundational_model_trainer.py
-RUN export UPBIT_ACCESS_KEY="DUMMY" && export UPBIT_SECRET_KEY="DUMMY" && python specialist_trainer.py
+RUN python foundational_model_trainer.py
+RUN python specialist_trainer.py
 RUN echo "Build-Time Training Complete. Model files generated."
 
 # --- STAGE 2: The 'Store' (Final Lightweight Image - Under 500MB) ---

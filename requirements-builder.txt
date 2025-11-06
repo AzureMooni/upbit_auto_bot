@@ -8,5 +8,5 @@ stable-baselines3
 pyupbit
 lightgbm
 google-generativeai
-numpy
+numpy<2.0
 pandas
