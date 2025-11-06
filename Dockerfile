@@ -28,6 +28,7 @@ RUN adduser --system --group appuser
 USER appuser
 COPY requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    apt-get clean && \
     pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
     rm -rf /var/lib/apt/lists/*
 # 5. Copy ONLY the essential files and generated models from the 'Factory' stage
