@@ -34,6 +34,7 @@ def precompute_all_indicators(df: pd.DataFrame):
     macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
     df['MACDh_12_26_9'] = macd['MACDh_12_26_9']
     bbands = ta.bbands(df['close'], length=20, std=2)
+    print("Debugging bbands columns:", bbands.columns)
     df['BBL_20'] = bbands['BBL_20_2.0']
     df['BBM_20'] = bbands['BBM_20_2.0']
     df['BBU_20'] = bbands['BBU_20_2.0']
