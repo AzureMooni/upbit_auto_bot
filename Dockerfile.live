@@ -1,9 +1,6 @@
 # Dockerfile for the lightweight live trading environment
 
-FROM python:3.12-slim
-
-ARG UPBIT_ACCESS_KEY
-ARG UPBIT_SECRET_KEY
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -17,10 +14,6 @@ RUN pip install --no-cache-dir -r runtime-requirements.txt
 # Install build-time dependencies for model training
 COPY build-requirements.txt .
 RUN pip install --no-cache-dir -r build-requirements.txt
-
-# Set environment variables for API keys during build
-ENV UPBIT_ACCESS_KEY=$UPBIT_ACCESS_KEY
-ENV UPBIT_SECRET_KEY=$UPBIT_SECRET_KEY
 
 # Copy necessary source code for live trading and training
 COPY main.py \

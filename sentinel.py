@@ -10,11 +10,10 @@ from dotenv import load_dotenv
 from universe_manager import get_top_10_coins
 from dl_predictor import train_price_prediction_model
 from core.exchange import UpbitService
+from constants import SENTINEL_MODEL_PATH, NTFY_TOPIC
 
 # --- Configuration ---
 DATA_DIR = "data/retraining_sets"
-MODEL_PATH = "data/v2_lightgbm_model.joblib"
-NTFY_TOPIC = "upbit-sentinel-v2-alerts"
 
 def find_missed_v_recovery(df_15min: pd.DataFrame, df_1h: pd.DataFrame):
     """ "V-자 회복" 패턴을 기반으로 놓친 거래 기회를 탐지합니다. """
@@ -73,7 +72,7 @@ def trigger_retraining_pipeline(ticker: str, data_segment: pd.DataFrame):
             print(f"[WARN] Could not fetch full historical data for {ticker}. Skipping retraining.")
             return
         
-        train_price_prediction_model(full_data, MODEL_PATH)
+        train_price_prediction_model(full_data, SENTINEL_MODEL_PATH)
         print(f"[SUCCESS] Model has been retrained and updated at {MODEL_PATH}.")
 
     except Exception as e:

@@ -13,11 +13,11 @@ load_dotenv()
 # --- Core Module Imports ---
 try:
     from universe_manager import get_top_10_coins
-    from constants import MODEL_SAVE_PATH
+    from constants import MODEL_SAVE_PATH, LOOKBACK_WINDOW
     from trading_env_simple import SimpleTradingEnv
     from sentiment_analyzer import SentimentAnalyzer
     from core.exchange import UpbitService
-    from market_regime_detector import precompute_all_indicators, get_market_regime
+    from market_regime_detector import precompute_all_indicators, get_market_regime, get_market_regime_dataframe
     from risk_control_tower import RiskControlTower
     from execution_engine_interface import UpbitExecutionEngine
 except ImportError as e:
@@ -26,23 +26,23 @@ except ImportError as e:
     sys.exit(1)
 
 # --- 1. Load API Keys ---
-if len(sys.argv) == 3:
-    access_key = sys.argv[1]
-    secret_key = sys.argv[2]
-    print(f'[INFO] API Keys loaded from command-line arguments.')
-elif os.environ.get('UPBIT_ACCESS_KEY') and os.environ.get('UPBIT_SECRET_KEY'):
-    access_key = os.environ.get('UPBIT_ACCESS_KEY')
-    secret_key = os.environ.get('UPBIT_SECRET_KEY')
-    print(f'[INFO] API Keys loaded from environment variables.')
-else:
-    print('[FATAL] API Keys were not provided either as command-line arguments or as environment variables.')
-    print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
-    sys.exit(1)
-print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
-
-# --- 2. Live Trader Class Definition ---
 class LiveTrader:
     def __init__(self, capital: float):
+        # --- 1. Load API Keys ---
+        if len(sys.argv) == 3:
+            access_key = sys.argv[1]
+            secret_key = sys.argv[2]
+            print(f'[INFO] API Keys loaded from command-line arguments.')
+        elif os.environ.get('UPBIT_ACCESS_KEY') and os.environ.get('UPBIT_SECRET_KEY'):
+            access_key = os.environ.get('UPBIT_ACCESS_KEY')
+            secret_key = os.environ.get('UPBIT_SECRET_KEY')
+            print(f'[INFO] API Keys loaded from environment variables.')
+        else:
+            print('[FATAL] API Keys were not provided either as command-line arguments or as environment variables.')
+            print('Usage: python live_trader.py <ACCESS_KEY> <SECRET_KEY>')
+            sys.exit(1)
+        print(f'[INFO] API Keys loaded successfully. Access Key starts with: {access_key[:4]}...')
+
         self.initial_capital = capital
         self.agents = {}
         self.upbit_service = UpbitService(access_key, secret_key)
@@ -187,7 +187,7 @@ class LiveTrader:
                     obs_df = processed_df.tail(LOOKBACK_WINDOW)
                     obs = obs_df.to_numpy(dtype=np.float32)
                     action_tensor, _ = agent_to_use.predict(obs, deterministic=True)
-                    confidence = 1.0 # Set confidence to 1.0 as torch is not available
+                    confidence = 1.0
                     
                     action_map = {0: 'Hold', 1: 'Buy', 2: 'Sell'}
                     predicted_action = action_map.get(int(action_tensor), 'Hold')
