@@ -27,7 +27,7 @@ WORKDIR /app
 RUN adduser --system --group appuser
 USER appuser
 COPY requirements.txt .
-RUN rm -rf /var/lib/apt/lists/* && \
+RUN rm -rf /var/lib/apt/lists && mkdir -p /var/lib/apt/lists/partial && \
     apt-get update && apt-get install -y --no-install-recommends git && \
     pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
     rm -rf /var/lib/apt/lists/*
