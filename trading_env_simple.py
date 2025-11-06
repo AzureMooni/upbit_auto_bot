@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
 
 class SimpleTradingEnv(gym.Env):
@@ -22,6 +23,10 @@ class SimpleTradingEnv(gym.Env):
         print(f"[SimpleTradingEnv] Initial df length after dropna: {len(self.df)}")
         if self.df.empty:
             raise ValueError("DataFrame is empty after dropping NaN values in SimpleTradingEnv.")
+        
+        self.scaler = StandardScaler()
+        self.df_scaled = self.scaler.fit_transform(self.df)
+
         self.lookback_window = lookback_window
         self.initial_balance = initial_balance
         self.n_features = self.df.shape[1] # Use self.df after dropna
@@ -57,8 +62,8 @@ class SimpleTradingEnv(gym.Env):
 
         self._take_action(action, current_price)
 
-        self.net_worth = self.balance + self.shares_held * current_price
-        reward = (self.net_worth - old_net_worth) / self.initial_balance
+        self.net_worth = np.clip(self.balance + self.shares_held * current_price, 0, 1e9)
+        reward = np.log(self.net_worth / old_net_worth) if old_net_worth > 0 else 0
         reward = np.clip(reward, -1.0, 1.0) # Clip rewards to prevent extreme values
 
         terminated = (
@@ -72,19 +77,19 @@ class SimpleTradingEnv(gym.Env):
         return obs, reward, terminated, truncated, {}
 
     def _get_observation(self):
-        obs = self.df.iloc[
+        obs = self.df_scaled[
             self.current_step - self.lookback_window : self.current_step
-        ].values.astype(np.float32)
+        ].astype(np.float32)
         if np.isnan(obs).any() or np.isinf(obs).any():
             print("[SimpleTradingEnv] WARNING: NaN or Inf found in observation!")
         return obs
 
     def _take_action(self, action, current_price):
         if action == 1:  # Buy
-            if self.balance > 10:
-                self.shares_held += self.balance / current_price
-                self.balance = 0
+            if self.balance > 10 and current_price > 0:
+                self.shares_held += (self.balance * 0.1) / current_price
+                self.balance *= 0.9
         elif action == 2:  # Sell
             if self.shares_held > 0:
-                self.balance += self.shares_held * current_price
-                self.shares_held = 0
+                self.balance += (self.shares_held * 0.1) * current_price
+                self.shares_held *= 0.9

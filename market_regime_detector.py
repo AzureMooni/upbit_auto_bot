@@ -1,5 +1,7 @@
 import pandas as pd
+import numpy as np
 import pandas_ta as ta
+
 
 def get_market_regime_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -26,15 +28,27 @@ def precompute_all_indicators(df: pd.DataFrame):
     """
     [REFACTORED] pandas_ta를 사용하여 모든 기술적 지표를 일관되게 계산합니다.
     """
-    df.ta.ema(length=20, append=True)
-    df.ta.ema(length=50, append=True)
-    df.ta.rsi(length=14, append=True)
-    df.ta.macd(fast=12, slow=26, signal=9, append=True)
-    df.ta.bbands(length=20, std=2, append=True)
-    df.ta.atr(length=14, append=True)
-    df.ta.stochrsi(length=14, rsi_length=14, k=3, d=3, append=True)
-    df.ta.ppo(fast=12, slow=26, signal=9, append=True)
-    df.ta.adx(length=14, append=True)
+    df['EMA_20'] = ta.ema(df['close'], length=20)
+    df['EMA_50'] = ta.ema(df['close'], length=50)
+    df['RSI_14'] = ta.rsi(df['close'], length=14)
+    macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
+    df['MACDh_12_26_9'] = macd['MACDH_12_26_9']
+    bbands = ta.bbands(df['close'], length=20, std=2)
+    df['BBL_20'] = bbands['BBL_20']
+    df['BBM_20'] = bbands['BBM_20']
+    df['BBU_20'] = bbands['BBU_20']
+    df['BBP_20_2.0'] = (df['close'] - df['BBL_20']) / (df['BBU_20'] - df['BBL_20'])
+    atr = ta.atr(df['high'], df['low'], df['close'], length=14)
+    df['ATRr_14'] = atr
+    # df['STOCHRSIk_14_14_3_3'] = ta.stochrsi(df['close'], length=14, rsi_length=14, k=3, d=3)['STOCHRSIk_14_14_3_3']
+    ppo = ta.ppo(df['close'], fast=12, slow=26, signal=9)
+    df['PPO_12_26_9'] = ppo['PPO_12_26_9']
+    df['PPOh_12_26_9'] = ppo['PPOH_12_26_9']
+    df['PPOs_12_26_9'] = ppo['PPOS_12_26_9']
+    adx = ta.adx(df['high'], df['low'], df['close'], length=14)
+    df['ADX_14'] = adx['ADX_14']
+    df['DMP_14'] = adx['DMP_14']
+    df['DMN_14'] = adx['DMN_14']
     
     # NATR은 수동 계산이 필요할 수 있습니다.
     if 'ATRr_14' in df.columns:

@@ -57,6 +57,7 @@ def train_specialist_agents(total_timesteps=100000):
         os.makedirs(log_dir, exist_ok=True)
 
         print(f"{regime} 시장 국면 거래 환경을 설정합니다...")
+        regime_df = regime_df.drop(columns=['market_regime'])
         env = SimpleTradingEnv(regime_df, lookback_window=LOOKBACK_WINDOW)
         env = FlattenObservation(env)
         vec_env = DummyVecEnv([lambda: env])
@@ -69,7 +70,8 @@ def train_specialist_agents(total_timesteps=100000):
             tensorboard_log=log_dir,
             n_steps=2048,
             batch_size=64,
-            n_epochs=10
+            n_epochs=10,
+            device='cpu'
         )
 
         print(f"모델 훈련을 시작합니다... (Total Timesteps: {total_timesteps})")
@@ -81,6 +83,27 @@ def train_specialist_agents(total_timesteps=100000):
         
         # Initialize stats for the regime
         specialist_stats[regime] = {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
+
+    # --- 3. Fallback for Missing Models ---
+    print("\n--- 훈련 후 모델 파일 검증 및 폴백 처리 ---")
+    regimes = ['Bullish', 'Bearish', 'Sideways']
+    fallback_model_path = f"{MODEL_SAVE_PATH_BASE}sideways.zip"
+    
+    # Check if the fallback model itself exists
+    if not os.path.exists(fallback_model_path):
+        print(f"[FATAL] 치명적 오류: 기본 폴백 모델인 {fallback_model_path}가 생성되지 않았습니다.")
+        print("모든 시장 국면에 대한 데이터가 부족하여 어떤 모델도 훈련되지 않았을 가능성이 높습니다.")
+        # If even the fallback is missing, we cannot proceed. Exit to fail the build.
+        exit(1)
+
+    for regime in regimes:
+        model_path = f"{MODEL_SAVE_PATH_BASE}{regime.lower()}.zip"
+        if not os.path.exists(model_path):
+            print(f"[WARN] 경고: {regime} 모델이 생성되지 않았습니다. {fallback_model_path}을(를) 복사하여 대체합니다.")
+            shutil.copy(fallback_model_path, model_path)
+            # Since the model is a fallback, create a default stat entry
+            if regime not in specialist_stats:
+                 specialist_stats[regime] = {'wins': 0, 'losses': 0, 'total_profit': 0.0, 'total_loss': 0.0, 'trades': 0}
 
     # Save initial specialist stats
     with open(STATS_SAVE_PATH, 'w') as f:

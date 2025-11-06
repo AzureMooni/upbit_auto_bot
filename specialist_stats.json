@@ -1,1 +1,23 @@
-{"Bullish": {"wins": 0, "losses": 0, "total_profit": 0.0, "total_loss": 0.0, "trades": 0}, "Bearish": {"wins": 0, "losses": 0, "total_profit": 0.0, "total_loss": 0.0, "trades": 0}, "Sideways": {"wins": 0, "losses": 0, "total_profit": 0.0, "total_loss": 0.0, "trades": 0}}
+{
+    "Bullish": {
+        "wins": 0,
+        "losses": 0,
+        "total_profit": 0.0,
+        "total_loss": 0.0,
+        "trades": 0
+    },
+    "Bearish": {
+        "wins": 0,
+        "losses": 0,
+        "total_profit": 0.0,
+        "total_loss": 0.0,
+        "trades": 0
+    },
+    "Sideways": {
+        "wins": 0,
+        "losses": 0,
+        "total_profit": 0.0,
+        "total_loss": 0.0,
+        "trades": 0
+    }
+}

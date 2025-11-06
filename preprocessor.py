@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import pickle
 import numpy as np
-from market_regime_detector import precompute_all_indicators, get_market_regime
+from market_regime_detector import precompute_all_indicators, get_market_regime, get_market_regime_dataframe
 from strategies.trend_follower import generate_v_recovery_signals
 from strategies.mean_reversion_strategy import generate_sideways_signals
 from ccxt_downloader import CCXTDataDownloader
@@ -14,27 +14,36 @@ class DataPreprocessor:
             "AVAX/KRW", "ADA/KRW", "LINK/KRW", "ETC/KRW"
         ]
         self.interval = interval
-        self.cache_dir = "cache"
-        os.makedirs(self.cache_dir, exist_ok=True)
-        self.data_downloader = CCXTDataDownloader()
+        self.data_dir = "data"  # Use the local data directory
+        os.makedirs(self.data_dir, exist_ok=True)
 
     def _preprocess_single_ticker(self, ticker: str) -> pd.DataFrame | None:
         print(f"[{ticker}] 데이터 로딩...")
-        file_path = os.path.join(self.cache_dir, f"{ticker.replace('/', '_')}_{self.interval}.feather") # Changed to replace '/' with '_'
-        
+        file_name = f"{ticker.replace('/', '_')}_{self.interval}.csv"
+        file_path = os.path.join(self.data_dir, file_name)
+
         if not os.path.exists(file_path):
-            print(f"[{ticker}] 캐시 파일 없음. 다운로드 시작...")
-            df = self.data_downloader.download_ohlcv(ticker, self.interval)
-            if df is None or df.empty:
-                print(f"[ERROR] {ticker} 데이터를 다운로드할 수 없습니다.")
+            print(f"[ERROR] {ticker} 데이터 파일을 찾을 수 없습니다: {file_path}. 이 티커를 건너뜁니다.")
+            return None
+        
+        try:
+            print(f"[{ticker}] 로컬 데이터 파일에서 로드: {file_path}")
+            df = pd.read_csv(file_path)
+            # Ensure timestamp is the index
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df.set_index("timestamp", inplace=True)
+            else:
+                print(f"[ERROR] {file_path}에 'timestamp' 컬럼이 없습니다.")
                 return None
-            df.reset_index().to_feather(file_path)
-        else:
-            print(f"[{ticker}] 캐시에서 데이터 로드.")
-            df = pd.read_feather(file_path)
-            df.set_index("timestamp", inplace=True)
+        except Exception as e:
+            print(f"[ERROR] {file_path} 파일 읽기 오류: {e}")
+            return None
 
         print(f"[{ticker}] 지표 및 시장 체제 계산...")
+        if len(df) < 50:
+            print(f"[WARN] {ticker} 데이터 길이가 너무 짧습니다 ({len(df)}). 최소 50개 행이 필요합니다. 이 티커를 건너뜁니다.")
+            return None
         df_processed = precompute_all_indicators(df)
         df_processed = generate_v_recovery_signals(df_processed)
         df_processed = generate_sideways_signals(df_processed)

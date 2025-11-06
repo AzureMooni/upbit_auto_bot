@@ -3,8 +3,8 @@ python-dotenv
 pyarrow
 pyupbit
 google-generativeai
-pandas
-numpy
+pandas==1.5.3
+numpy==1.26.4
 stable-baselines3
 torch
 lightgbm
