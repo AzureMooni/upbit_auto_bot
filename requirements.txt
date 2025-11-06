@@ -11,5 +11,5 @@ torch
 lightgbm
 xgboost
 scikit-learn
-git+https://github.com/aarigs/pandas-ta.git
+
 pyjwt==2.3.0

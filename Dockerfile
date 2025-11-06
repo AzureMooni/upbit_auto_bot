@@ -29,8 +29,7 @@ RUN adduser --system --group appuser
 USER appuser
 COPY requirements.txt .
 COPY --from=builder /usr/local/lib/python3.13/site-packages/pandas_ta /usr/local/lib/python3.12/site-packages/pandas_ta
-RUN apt-get install -y --no-install-recommends git && \
-    pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
+RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 # 5. Copy ONLY the essential files and generated models from the 'Factory' stage
 # The 'final' image will NOT contain the heavy torch/xgboost libraries.
