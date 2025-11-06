@@ -7,22 +7,20 @@ def generate_v_recovery_signals(df: pd.DataFrame, rsi_period=14, macd_fast=12, m
     """
     df_copy = df.copy()
 
-    # 1. 필요 지표 계산
-    # RSI와 RSI의 5일 이동평균 계산
-    df_copy['RSI'] = df_copy.ta.rsi(length=rsi_period)
-    df_copy['RSI_SMA'] = df_copy['RSI'].rolling(window=5).mean()
-    # MACD
-    macd = df_copy.ta.macd(fast=macd_fast, slow=macd_slow, signal=macd_signal)
-    df_copy['MACD_hist'] = macd[f'MACDH_{macd_fast}_{macd_slow}_{macd_signal}']
-    
+    # 1. 필요 지표 계산 (전처리 단계에서 이미 계산됨)
+    # RSI의 5일 이동평균 계산. precompute_all_indicators에서 'RSI_14'를 생성하므로, 이를 사용합니다.
+    df_copy['RSI_SMA'] = df_copy['RSI_14'].rolling(window=5).mean()
+    # MACD 히스토그램은 'MACDh_12_26_9' 컬럼을 사용합니다.
+    df_copy['MACD_hist'] = df_copy['MACDh_12_26_9']
+
     # 2. 매수/매도 조건 정의
     # -- 매수 조건 --
     # 조건 1: 장기 추세는 강세 (EMA_50은 백테스터에서 이미 계산되어 있다고 가정)
     is_long_term_bull = df_copy['close'] > df_copy['EMA_50']
     # 조건 2: 최근 3봉 이내에 RSI가 45 아래로 하락했었음
-    rsi_dipped_below_45 = df_copy['RSI'].rolling(window=3).min() < 45
+    rsi_dipped_below_45 = df_copy['RSI_14'].rolling(window=3).min() < 45
     # [REVISED] 조건 3: 현재 RSI가 자신의 5일 이동평균을 상향 돌파
-    rsi_crosses_above_sma = (df_copy['RSI'] > df_copy['RSI_SMA']) & (df_copy['RSI'].shift(1) <= df_copy['RSI_SMA'].shift(1))
+    rsi_crosses_above_sma = (df_copy['RSI_14'] > df_copy['RSI_SMA']) & (df_copy['RSI_14'].shift(1) <= df_copy['RSI_SMA'].shift(1))
 
     buy_conditions = is_long_term_bull & rsi_dipped_below_45 & rsi_crosses_above_sma
 
