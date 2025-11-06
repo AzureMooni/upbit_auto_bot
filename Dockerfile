@@ -27,10 +27,9 @@ WORKDIR /app
 RUN adduser --system --group appuser
 USER appuser
 COPY requirements.txt .
-RUN rm -rf /var/lib/apt/lists && mkdir -p /var/lib/apt/lists/partial && \
-    apt-get update && apt-get install -y --no-install-recommends git && \
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
     pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 # 5. Copy ONLY the essential files and generated models from the 'Factory' stage
 # The 'final' image will NOT contain the heavy torch/xgboost libraries.
 COPY --from=builder /app/core /app/core
