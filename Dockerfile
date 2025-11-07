@@ -10,9 +10,8 @@ WORKDIR /app
 # Copy requirements and install all Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install numpy scipy cython
 # The torch command is effectively handled by requirements.txt now, but we keep the extra index for it.
-RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy the rest of the source code and data needed for training
 COPY . .

@@ -10,7 +10,7 @@ stable-baselines3
 torch
 lightgbm
 xgboost
-scikit-learn
+scikit-learn==1.4.2
 
 pyjwt==2.3.0
 pandas_ta
