@@ -1,3 +1,4 @@
+setuptools>=65.5.0
 ccxt
 python-dotenv
 pyarrow
