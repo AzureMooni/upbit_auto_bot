@@ -13,3 +13,4 @@ xgboost
 scikit-learn
 
 pyjwt==2.3.0
+pandas_ta
