@@ -41,3 +41,6 @@ cache/
 !requirements.txt
 !runtime-requirements.txt
 !requirements-builder.txt
+
+# Log files
+logs/
