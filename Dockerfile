@@ -10,7 +10,7 @@ WORKDIR /app
 # Copy requirements and install all Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install numpy
+RUN pip install numpy scipy
 # The torch command is effectively handled by requirements.txt now, but we keep the extra index for it.
 RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
