@@ -7,10 +7,9 @@ google-ai-generativelanguage==0.6.15
 pandas==2.3.3
 numpy==2.3.4
 stable-baselines3==2.6.0
-torch==2.9.0
 lightgbm==4.3.0
 xgboost==2.0.3
 scikit-learn==1.4.2
 gymnasium==0.29.1
 pyjwt==2.3.0
-pandas-ta==0.3.14b0
+pandas-ta
