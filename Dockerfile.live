@@ -5,6 +5,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+ENV NUMBA_CACHE_DIR=/tmp
+ENV MPLCONFIGDIR=/tmp
+
 # Create a non-root user for security
 RUN adduser --system --group appuser
 
