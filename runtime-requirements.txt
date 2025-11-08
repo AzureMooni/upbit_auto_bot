@@ -1,7 +1,7 @@
 scikit-learn
 ccxt
 pandas
-pandas-ta==0.3.14b0
+pandas-ta==0.4.71b0
 python-dotenv
 pyarrow
 stable-baselines3
