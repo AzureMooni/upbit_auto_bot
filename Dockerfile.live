@@ -25,6 +25,7 @@ COPY --chown=appuser:appuser sentiment_analyzer.py .
 COPY --chown=appuser:appuser market_regime_detector.py .
 COPY --chown=appuser:appuser risk_control_tower.py .
 COPY --chown=appuser:appuser execution_engine_interface.py .
+COPY --chown=appuser:appuser risk_manager.py .
 COPY --chown=appuser:appuser preprocessor.py .
 COPY --chown=appuser:appuser ccxt_downloader.py .
 COPY --chown=appuser:appuser dl_model_trainer.py .
