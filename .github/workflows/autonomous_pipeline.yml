@@ -54,7 +54,7 @@ jobs:
             --build-arg UPBIT_ACCESS_KEY=${{ secrets.UPBIT_ACCESS_KEY }} \
             --build-arg UPBIT_SECRET_KEY=${{ secrets.UPBIT_SECRET_KEY }} \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f Dockerfile.live .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 

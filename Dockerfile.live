@@ -1,53 +1,44 @@
 # Dockerfile for the lightweight live trading environment
+# This Dockerfile assumes that models are pre-trained and available in the repository.
 
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
 # Create a non-root user for security
-RUN useradd --create-home appuser
+RUN adduser --system --group appuser
 
-# Install only runtime dependencies
+# Install only runtime dependencies from the cleaned requirements file
 COPY runtime-requirements.txt .
 RUN pip install --no-cache-dir -r runtime-requirements.txt
 
-# Install build-time dependencies for model training
-COPY build-requirements.txt .
-RUN pip install --no-cache-dir -r build-requirements.txt
+# Copy only the necessary application code for runtime
+# Note: We are not copying training scripts like specialist_trainer.py
+COPY --chown=appuser:appuser live_trader.py .
+COPY --chown=appuser:appuser universe_manager.py .
+COPY --chown=appuser:appuser constants.py .
+COPY --chown=appuser:appuser trading_env_simple.py .
+COPY --chown=appuser:appuser sentiment_analyzer.py .
+COPY --chown=appuser:appuser market_regime_detector.py .
+COPY --chown=appuser:appuser risk_control_tower.py .
+COPY --chown=appuser:appuser execution_engine_interface.py .
+COPY --chown=appuser:appuser preprocessor.py .
+COPY --chown=appuser:appuser ccxt_downloader.py .
+COPY --chown=appuser:appuser dl_model_trainer.py .
+COPY --chown=appuser:appuser core/ ./core/
+COPY --chown=appuser:appuser strategies/ ./strategies/
 
-# Copy necessary source code for live trading and training
-COPY main.py \
-     live_trader.py \
-     universe_manager.py \
-     sentiment_analyzer.py \
-     market_regime_detector.py \
-     risk_control_tower.py \
-     execution_engine_interface.py \
-     constants.py \
-     preprocessor.py \
-     trading_env_simple.py \
-     specialist_trainer.py \
-     ccxt_downloader.py ./
-COPY core/ ./core/
+# Copy pre-trained models and stats
+# These are small enough to be included directly in the image.
+COPY --chown=appuser:appuser specialist_agent_*.zip .
+COPY --chown=appuser:appuser foundational_agent.zip .
+COPY --chown=appuser:appuser specialist_stats.json .
 
-# Explicitly remove foundational_model_trainer.py to prevent accidental execution
-RUN rm foundational_model_trainer.py || true
+# Copy the sentinel model, creating the data directory
+COPY --chown=appuser:appuser data/v2_lightgbm_model.joblib ./data/v2_lightgbm_model.joblib
 
-# Run the specialist trainer to generate models
-RUN python specialist_trainer.py
-
-# Run the data downloader to pre-download historical data
-ENV DOCKER_BUILD=true # Set environment variable to trigger download in ccxt_downloader.py
-RUN python ccxt_downloader.py
-
-# Clean up build-time dependencies and scripts
-RUN pip uninstall -y -r build-requirements.txt
-RUN rm build-requirements.txt specialist_trainer.py ccxt_downloader.py
-
-# The models are now part of the image, no need to mount as volume
-
-# Set user and environment
+# Switch to the non-root user
 USER appuser
 
-# Default command to start the live trader
-CMD ["python", "live_trader.py"]
+# Set the entrypoint for the container
+ENTRYPOINT ["python", "live_trader.py"]
