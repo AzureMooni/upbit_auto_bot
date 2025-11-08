@@ -8,3 +8,4 @@ stable-baselines3
 torch
 numpy
 gymnasium
+google-generativeai
