@@ -34,7 +34,7 @@ COPY --chown=appuser:appuser strategies/ ./strategies/
 
 # Copy pre-trained models and stats
 # These are small enough to be included directly in the image.
-COPY --chown=appuser:appuser bullish_market_agent.zip bearish_market_agent.zip sideways_market_agent.zip .
+COPY --chown=appuser:appuser specialist_agent_*.zip .
 COPY --chown=appuser:appuser foundational_agent.zip .
 COPY --chown=appuser:appuser specialist_stats.json .
 
