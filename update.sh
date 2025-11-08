@@ -8,7 +8,7 @@ set -e
 AWS_ACCOUNT_ID="052407072916"
 AWS_REGION="ap-northeast-2"
 ECR_REPOSITORY="ai-commander-v2"
-IMAGE_TAG="latest"
+IMAGE_TAG=$(git rev-parse HEAD)
 
 # 2. ECR 로그인 (EC2 IAM 역할 사용)
 echo "Logging in to Amazon ECR..."
