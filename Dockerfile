@@ -11,7 +11,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install torch==2.9.0 --extra-index-url https://download.pytorch.org/whl/cpu
-RUN pip install https://files.pythonhosted.org/packages/93/76/9236326b13e31f62b589e12c131d653335c4795bf3d7a449124824c5c829/pandas-ta-0.3.14b0.tar.gz
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the source code and data needed for training
