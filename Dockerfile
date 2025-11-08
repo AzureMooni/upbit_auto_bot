@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install torch==2.9.0 --extra-index-url https://download.pytorch.org/whl/cpu
-RUN PIP_CONFIG_FILE=/dev/null pip install --index-url https://pypi.org/simple pandas-ta==0.3.14b0
+RUN PIP_CONFIG_FILE=/dev/null pip install --index-url https://pypi.org/simple pandas-ta==0.3.14b
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the source code and data needed for training
