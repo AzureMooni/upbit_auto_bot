@@ -39,9 +39,7 @@ env/
 # They should not be committed to the repository.
 *.pkl
 *.h5
-*.joblib
 *.feather
-*.zip
 
 # --- Tensorboard --- #
 /foundational_rl_tensorboard_logs/
