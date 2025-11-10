@@ -17,7 +17,7 @@ DATA_PATH = "cache/preprocessed_data.pkl"
 LOG_DIR = "foundational_rl_tensorboard_logs/"
 STATS_SAVE_PATH = "specialist_stats.json"
 
-def train_foundational_agent(total_timesteps=100000):
+def train_foundational_agent(start_date: pd.Timestamp, end_date: pd.Timestamp, total_timesteps=100000):
     if os.path.exists(LOG_DIR):
         shutil.rmtree(LOG_DIR)
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -31,7 +31,10 @@ def train_foundational_agent(total_timesteps=100000):
         return
 
     df = pd.concat(all_data_dict.values(), ignore_index=False)
-    df.sort_index(inplace=True) 
+    print(f"[DEBUG] Initial concatenated df length: {len(df)}")
+    df.sort_index(inplace=True)
+    df = df[(df.index >= start_date) & (df.index < end_date)]
+    print(f"[DEBUG] df length after date filtering: {len(df)}")
 
     print("거래 환경을 설정합니다...")
     env = SimpleTradingEnv(df, lookback_window=LOOKBACK_WINDOW)

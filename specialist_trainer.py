@@ -17,7 +17,7 @@ LOG_DIR_BASE = "specialist_rl_tensorboard_logs/"
 MODEL_SAVE_PATH_BASE = "specialist_agent_"  # Prefix for specialist models
 STATS_SAVE_PATH = "specialist_stats.json"
 
-def train_specialist_agents(total_timesteps=100000):
+def train_specialist_agents(start_date: pd.Timestamp, end_date: pd.Timestamp, total_timesteps=100000):
     # Clean up existing log directories
     if os.path.exists(LOG_DIR_BASE):
         print(f"기존 로그 디렉토리 {LOG_DIR_BASE}를 삭제합니다.")
@@ -36,6 +36,7 @@ def train_specialist_agents(total_timesteps=100000):
 
     df = pd.concat(all_data_dict.values(), ignore_index=False)
     df.sort_index(inplace=True)
+    df = df[(df.index >= start_date) & (df.index < end_date)]
 
     # --- 2. Identify Market Regimes ---
     print("시장 국면을 식별합니다...")

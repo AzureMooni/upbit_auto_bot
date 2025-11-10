@@ -114,4 +114,20 @@ class CCXTDataDownloader:
             return df
         else:
             print(f"No new data downloaded for {ticker}.")
-            return existing_df if not existing_df.empty else None # Return existing data if no new data
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download OHLCV data using CCXT.")
+    parser.add_argument("--ticker", type=str, required=True, help="Ticker symbol (e.g., BTC/KRW)")
+    parser.add_argument("--timeframe", type=str, default="1m", help="Timeframe (e.g., 1m, 1h, 1d)")
+    parser.add_argument("--start_date", type=str, default="2020-01-01", help="Start date in YYYY-MM-DD format")
+    parser.add_argument("--end_date", type=str, default=datetime.now().strftime("%Y-%m-%d"), help="End date in YYYY-MM-DD format")
+    args = parser.parse_args()
+
+    downloader = CCXTDataDownloader()
+    downloader.download_ohlcv(
+        ticker=args.ticker,
+        timeframe=args.timeframe,
+        start_date_str=args.start_date,
+        end_date_str=args.end_date,
+    )

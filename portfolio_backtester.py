@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import json
+import pickle
 from pandas.tseries.offsets import DateOffset
 
 # TF_ENABLE_ONEDNN_OPTS=0 환경 변수 설정으로 mutex.cc 오류 방지
@@ -11,7 +12,7 @@ from stable_baselines3 import PPO
 from trading_env_simple import SimpleTradingEnv
 from dl_model_trainer import DLModelTrainer
 from foundational_model_trainer import train_foundational_agent
-from specialist_trainer import train_specialists
+from specialist_trainer import train_specialist_agents
 
 
 class PortfolioBacktester:
@@ -81,7 +82,7 @@ class PortfolioBacktester:
             total_timesteps=100000,  # WFO에서는 타임스텝을 줄여서 빠르게 진행
         )
         # 2. Specialist Agents 훈련
-        train_specialists(
+        train_specialist_agents(
             start_date=train_start,
             end_date=train_end,
             total_timesteps_per_specialist=25000,  # WFO에서는 타임스텝을 줄여서 빠르게 진행
@@ -198,17 +199,14 @@ class PortfolioBacktester:
 
         # 최적화: 모든 데이터를 처음에 한 번만 로드
         print("\n- 모든 기간의 데이터를 메모리로 사전 로딩합니다...")
-        full_market_data = {}
-        for ticker in self.target_coins:
-            cache_path = os.path.join(
-                self.cache_dir, f"{ticker.replace('/', '_')}_1h.feather"
-            )
-            if os.path.exists(cache_path):
-                df = pd.read_feather(cache_path)
-                df.set_index("timestamp", inplace=True)
-                full_market_data[ticker] = df
-                print(f"  - {ticker} 데이터 로드 완료.")
+        preprocessed_data_path = os.path.join("data", "preprocessed_data.pkl")
+        if not os.path.exists(preprocessed_data_path):
+            print(f"오류: 전처리된 데이터 파일을 찾을 수 없습니다: {preprocessed_data_path}")
+            return
 
+        with open(preprocessed_data_path, "rb") as f:
+            full_market_data = pickle.load(f)
+        
         if not full_market_data:
             print("오류: 백테스팅에 사용할 데이터가 없습니다.")
             return

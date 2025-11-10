@@ -4,8 +4,8 @@ import os
 import argparse
 
 # --- 의존성 임포트 ---
-from market_regime_detector import precompute_regime_indicators, get_regime_from_indicators
-from risk_manager import get_position_size_ratio
+from market_regime_detector import precompute_all_indicators, get_market_regime, get_market_regime_dataframe
+from risk_manager import RiskManager, get_position_size_ratio
 from strategies.trend_follower import generate_v_recovery_signals
 
 
@@ -20,8 +20,9 @@ class CommanderBacktester:
         self.initial_capital = initial_capital
         self.cache_dir = "cache"
         
-        self.precompute_indicators = precompute_regime_indicators
-        self.get_regime = get_regime_from_indicators
+        self.precompute_indicators = precompute_all_indicators
+        self.get_regime = get_market_regime
+        self.risk_manager = RiskManager() # Instantiate RiskManager
         self.get_size_ratio = get_position_size_ratio
         self.generate_v_recovery_signals = generate_v_recovery_signals
         
@@ -78,25 +79,37 @@ class CommanderBacktester:
 
         # 1. 데이터 로드
         btc_ticker = "BTC/KRW"
-        cache_path = os.path.join(self.cache_dir, f"{btc_ticker.replace('/', '_')}_1h.feather")
+        data_dir = "data"
+        cache_path = os.path.join(data_dir, f"{btc_ticker.replace('/', '_')}_1m.feather")
         if not os.path.exists(cache_path):
             print(f"오류: {cache_path} 파일이 없습니다.")
             return
 
         df_btc_hourly = pd.read_feather(cache_path).set_index("timestamp")
+        print(f"[DEBUG] df_btc_hourly shape after loading: {df_btc_hourly.shape}")
+
         df_btc_daily = df_btc_hourly.resample("D").agg({
             'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
         }).dropna()
+        print(f"[DEBUG] df_btc_daily shape after daily resampling: {df_btc_daily.shape}")
         df_btc_daily["daily_return"] = df_btc_daily["close"].pct_change()
 
         # 2. 모든 지표 및 신호 일괄 계산
         print("  - 모든 거시 지표 및 신호를 사전 계산 중...")
         df_indicators = self.precompute_indicators(df_btc_daily)
+        print(f"[DEBUG] df_indicators shape after precompute_indicators: {df_indicators.shape}")
         df_indicators = self.generate_v_recovery_signals(df_indicators)
+        print(f"[DEBUG] df_indicators shape after generate_v_recovery_signals: {df_indicators.shape}")
         df_indicators.rename(columns={'signal': 'v_recovery_signal'}, inplace=True)
+        
+        # Apply market regime detection to the entire DataFrame
+        df_indicators = get_market_regime_dataframe(df_indicators)
+        print(f"[DEBUG] df_indicators shape after get_market_regime_dataframe: {df_indicators.shape}")
+
         # [NEW] 하락장 방어 로직을 위한 200일 이동평균선 추가
         df_indicators['SMA_200'] = df_indicators['close'].rolling(window=200, min_periods=100).mean()
         df_indicators.dropna(inplace=True)
+        print(f"[DEBUG] df_indicators shape after adding SMA_200 and dropna: {df_indicators.shape}")
         print("  - 지표 및 신호 계산 완료.")
 
         # 3. 시뮬레이션 상태 변수 초기화
@@ -140,19 +153,12 @@ class CommanderBacktester:
                 peak_price_since_entry = max(peak_price_since_entry, row['high'])
                 trailing_stop_price = peak_price_since_entry * (1 - trailing_stop_pct)
 
-            current_regime = self.get_regime(
-                close=current_price,
-                ema_20=row['EMA_20'],
-                ema_50=row['EMA_50'],
-                adx=row['ADX'],
-                normalized_atr=row['Normalized_ATR'],
-                natr_ma=row['Normalized_ATR_MA']
-            )
+            current_regime = row['market_regime'] # Use pre-calculated market regime
             
             active_capital_ratio = self.get_size_ratio(
                 regime=current_regime, 
-                normalized_atr=row['Normalized_ATR'], 
-                natr_ma=row['Normalized_ATR_MA']
+                normalized_atr=row['NATR_14'], 
+                natr_ma=row['NATR_14'] # Assuming NATR_14 is used for both
             )
             
             # [REFACTORED] V-Recovery & Sideways Strategy Execution

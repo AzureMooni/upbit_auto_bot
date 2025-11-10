@@ -93,7 +93,7 @@ async def main():
                 print(f"기존 캐시 디렉토리 {cache_dir}를 삭제합니다.")
                 shutil.rmtree(cache_dir)
             os.makedirs(cache_dir, exist_ok=True) # Recreate the cache directory
-        preprocessor.run()
+        preprocessor.run_and_save_to_pickle(os.path.join(preprocessor.data_dir, "preprocessed_data.pkl"))
 
     elif args.mode == "train":
         print("🤖 Training XGBoost model...")
@@ -141,7 +141,7 @@ async def main():
             end_date=args.end_date,
             initial_capital=args.capital
         )
-        commander_sim.run_commander_simulation()
+        commander_sim.run_walk_forward_optimization()
 
 
 if __name__ == "__main__":

@@ -4,11 +4,16 @@ set -e
 echo "[MLOps] Starting weekly full model retraining and deployment..."
 
 # Navigate to the project directory
-cd /home/ec2-user/upbit_auto_bot || { echo "ERROR: Project directory not found."; exit 1; }
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+cd "$SCRIPT_DIR" || { echo "ERROR: Project directory not found."; exit 1; }
 
 # Pull the latest changes from the Git repository
 echo "[MLOps] Pulling latest changes from Git..."
 git pull origin main
+
+# Clean up legacy data files
+echo "[MLOps] Removing legacy .csv data files..."
+rm -f data/*.csv
 
 # Activate virtual environment
 source venv/bin/activate

@@ -6,20 +6,19 @@ from market_regime_detector import precompute_all_indicators, get_market_regime,
 from strategies.trend_follower import generate_v_recovery_signals
 from strategies.mean_reversion_strategy import generate_sideways_signals
 from ccxt_downloader import CCXTDataDownloader
+from dl_model_trainer import DLModelTrainer # Import DLModelTrainer to get TARGET_COINS
+import argparse
 
 class DataPreprocessor:
-    def __init__(self, target_coins=None, interval="1h"):
-        self.target_coins = target_coins if target_coins is not None else [
-            "BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW",
-            "AVAX/KRW", "ADA/KRW", "LINK/KRW", "ETC/KRW"
-        ]
+    def __init__(self, target_coins=None, interval="1m"):
+        self.target_coins = target_coins if target_coins is not None else DLModelTrainer.TARGET_COINS
         self.interval = interval
         self.data_dir = "data"  # Use the local data directory
         os.makedirs(self.data_dir, exist_ok=True)
 
     def _preprocess_single_ticker(self, ticker: str) -> pd.DataFrame | None:
         print(f"[{ticker}] 데이터 로딩...")
-        file_name = f"{ticker.replace('/', '_')}_{self.interval}.csv"
+        file_name = f"{ticker.replace('/', '_')}_{self.interval}.feather"
         file_path = os.path.join(self.data_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -28,7 +27,7 @@ class DataPreprocessor:
         
         try:
             print(f"[{ticker}] 로컬 데이터 파일에서 로드: {file_path}")
-            df = pd.read_csv(file_path)
+            df = pd.read_feather(file_path)
             # Ensure timestamp is the index
             if 'timestamp' in df.columns:
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -82,4 +81,11 @@ class DataPreprocessor:
         with open(save_path, "wb") as f:
             pickle.dump(all_data, f)
         print(f"모든 코인 데이터가 {save_path}에 저장되었습니다.")
-        return all_data
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Preprocess cryptocurrency data and save to a pickle file.")
+    parser.add_argument("--output_path", type=str, default="preprocessed_data.pkl",
+                        help="Path to save the preprocessed data pickle file.")
+    args = parser.parse_args()
+
+    preprocessor = DataPreprocessor()
+    preprocessor.run_and_save_to_pickle(args.output_path)
