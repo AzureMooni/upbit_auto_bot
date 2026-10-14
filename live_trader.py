@@ -9,6 +9,7 @@ print("DEBUG: live_trader.py started") # Added for debugging
 
 # --- Load .env file ---
 load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", ".env"))
 
 # --- Core Module Imports ---
 try:
@@ -56,6 +57,7 @@ class LiveTrader:
         print('🚀 AI 퀀트 펀드 시스템 초기화를 시작합니다...')
         await self.upbit_service.connect()
         self._load_agents()
+        self.specialist_stats = self._load_specialist_stats()
         self._init_analyzer()
         initial_net_worth = await self.get_total_balance()
         self.portfolio_history[pd.Timestamp.now()] = initial_net_worth
@@ -184,8 +186,19 @@ class LiveTrader:
                         print('  - 관측 데이터 부족')
                         continue
 
-                    obs_df = processed_df.tail(LOOKBACK_WINDOW)
-                    obs = obs_df.to_numpy(dtype=np.float32)
+                    # Standardized regime mapping
+                    processed_df = get_market_regime_dataframe(processed_df)
+                    regime_map = {'Bullish': 0, 'Bearish': 1, 'Sideways': 2}
+                    processed_df['regime'] = processed_df['market_regime'].map(regime_map).fillna(2)
+
+                    final_features = [
+                        'open', 'high', 'low', 'close', 'volume',
+                        'ADX_14', 'NATR_14', 'BBP_20_2.0', 'EMA_20', 'EMA_50',
+                        'RSI_14', 'MACDh_12_26_9', 'regime'
+                    ]
+
+                    obs_df = processed_df[final_features].tail(50)
+                    obs = obs_df.to_numpy(dtype=np.float32).flatten()
                     action_tensor, _ = agent_to_use.predict(obs, deterministic=True)
                     confidence = 1.0
                     
@@ -205,12 +218,13 @@ class LiveTrader:
                         avg_profit = stats['total_profit'] / stats['wins'] if stats['wins'] > 0 else 1
                         avg_loss = abs(stats['total_loss'] / stats['losses']) if stats['losses'] > 0 else 1
                         
-                        investment_fraction = self.risk_control_tower.get_position_size_pct(
-                            win_rate, avg_profit / avg_loss if avg_loss > 0 else 1.0
+                        investment_fraction = self.risk_control_tower.determine_investment_size(
+                            win_rate=win_rate,
+                            avg_profit=avg_profit,
+                            avg_loss=avg_loss,
+                            prediction_confidence=confidence,
+                            sentiment_score=sentiment_score
                         )
-                        
-                        # Apply confidence and sentiment
-                        investment_fraction *= confidence * ((1 + sentiment_score) / 2)
                         
                         if investment_fraction > 0:
                             cash_balance = await self.upbit_service.get_balance('KRW') or 0

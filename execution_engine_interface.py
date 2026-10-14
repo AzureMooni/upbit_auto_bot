@@ -35,24 +35,27 @@ class UpbitExecutionEngine(ExecutionEngineInterface):
         print("✅ Upbit 주문 실행 엔진 활성화.")
 
     async def create_market_buy_order(self, symbol: str, amount_krw: float):
-        print(f"  - [EXEC] 시장가 매수 주문 실행 -> {symbol} / {amount_krw:,.0f} KRW")
-        # 실제 주문 로직 (현재는 주석 처리)
-        # order = await self.upbit_service.create_market_buy_order(symbol, amount_krw)
-        # if order and order['status'] == 'closed':
-        #     filled_amount = order['filled']
-        #     price = order['average']
-        #     self.open_positions[symbol] = {'entry_price': price, 'quantity': filled_amount}
-        #     print(f"  - [EXEC] {symbol} 매수 완료. 진입 가격: {price}, 수량: {filled_amount}")
-        #     return order
+        import os
+        live_mode = os.getenv("LIVE_TRADING", "true").lower() in ("true", "1")
+        print(f"  - [EXEC] 시장가 매수 주문 ({'LIVE' if live_mode else 'SIM'}) -> {symbol} / {amount_krw:,.0f} KRW")
         
-        # 시뮬레이션용 반환
-        # 가상의 체결 가격과 수량 계산
-        simulated_price = await self.upbit_service.get_current_price(symbol) # 현재가로 가정
-        if simulated_price is None: simulated_price = 1.0 # Fallback
-        simulated_quantity = amount_krw / simulated_price
+        if live_mode:
+            try:
+                order = await self.upbit_service.create_market_buy_order(symbol, amount_krw)
+                if order:
+                    price = order.get('average') or await self.upbit_service.get_current_price(symbol)
+                    filled_amount = order.get('filled') or (amount_krw / price if price else 0)
+                    self.open_positions[symbol] = {'entry_price': price, 'quantity': filled_amount}
+                    print(f"  - [EXEC LIVE] {symbol} 매수 완료. 진입 가격: {price}, 수량: {filled_amount}")
+                    return order
+            except Exception as e:
+                print(f"  - [EXEC ERROR] 실제 매수 주문 실패: {e}")
 
+        # 시뮬레이션용 반환 (Fallback or Simulation Mode)
+        simulated_price = await self.upbit_service.get_current_price(symbol) or 1.0
+        simulated_quantity = amount_krw / simulated_price
         self.open_positions[symbol] = {'entry_price': simulated_price, 'quantity': simulated_quantity}
-        print(f"  - [EXEC] {symbol} 매수 시뮬레이션 완료. 진입 가격: {simulated_price}, 수량: {simulated_quantity}")
+        print(f"  - [EXEC SIM] {symbol} 매수 시뮬레이션 기록. 진입 가격: {simulated_price}, 수량: {simulated_quantity}")
         return {
             "status": "ok",
             "symbol": symbol,
@@ -62,17 +65,25 @@ class UpbitExecutionEngine(ExecutionEngineInterface):
         }
 
     async def create_market_sell_order(self, symbol: str, quantity: float):
-        print(f"  - [EXEC] 시장가 매도 주문 실행 -> {symbol} / {quantity}개")
-        # 실제 주문 로직 (현재는 주석 처리)
-        # order = await self.upbit_service.create_market_sell_order(symbol, quantity)
-        # if order and order['status'] == 'closed':
-        #     if symbol in self.open_positions: del self.open_positions[symbol]
-        #     print(f"  - [EXEC] {symbol} 매도 완료.")
-        #     return order
+        import os
+        live_mode = os.getenv("LIVE_TRADING", "true").lower() in ("true", "1")
+        print(f"  - [EXEC] 시장가 매도 주문 ({'LIVE' if live_mode else 'SIM'}) -> {symbol} / {quantity}개")
+        
+        if live_mode:
+            try:
+                order = await self.upbit_service.create_market_sell_order(symbol, quantity)
+                if order:
+                    if symbol in self.open_positions:
+                        del self.open_positions[symbol]
+                    print(f"  - [EXEC LIVE] {symbol} 매도 완료.")
+                    return order
+            except Exception as e:
+                print(f"  - [EXEC ERROR] 실제 매도 주문 실패: {e}")
 
         # 시뮬레이션용 반환
-        if symbol in self.open_positions: del self.open_positions[symbol]
-        print(f"  - [EXEC] {symbol} 매도 시뮬레이션 완료.")
+        if symbol in self.open_positions:
+            del self.open_positions[symbol]
+        print(f"  - [EXEC SIM] {symbol} 매도 시뮬레이션 기록.")
         return {
             "status": "ok",
             "symbol": symbol,

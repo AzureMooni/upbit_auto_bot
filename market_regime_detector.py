@@ -38,9 +38,22 @@ def precompute_all_indicators(df: pd.DataFrame):
     df.ta.ppo(fast=12, slow=26, signal=9, append=True)
     df.ta.adx(length=14, append=True)
 
-    # NATR calculation depends on ATR. The .ta.atr call creates 'ATRr_14'.
+    # NATR calculation
     if 'ATRr_14' in df.columns:
         df['NATR_14'] = (df['ATRr_14'] / df['close']) * 100
+    elif 'ATR_14' in df.columns:
+        df['NATR_14'] = (df['ATR_14'] / df['close']) * 100
+
+    # MACD histogram alias compatibility
+    if 'MACDH_12_26_9' in df.columns and 'MACDh_12_26_9' not in df.columns:
+        df['MACDh_12_26_9'] = df['MACDH_12_26_9']
+    elif 'MACDh_12_26_9' in df.columns and 'MACDH_12_26_9' not in df.columns:
+        df['MACDH_12_26_9'] = df['MACDh_12_26_9']
+
+    # Bollinger Bands Percent alias compatibility
+    if 'BBL_20' in df.columns and 'BBU_20' in df.columns and 'BBP_20_2.0' not in df.columns:
+        denom = df['BBU_20'] - df['BBL_20']
+        df['BBP_20_2.0'] = np.where(denom != 0, (df['close'] - df['BBL_20']) / denom, 0.5)
 
     # SMA using pandas built-in
     df['SMA_50'] = df['close'].rolling(window=50).mean()

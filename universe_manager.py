@@ -8,27 +8,20 @@ async def get_top_10_coins(upbit_service: UpbitService):
     print("[INFO] 동적 유니버스 선정을 시작합니다 (24시간 거래대금 기준 상위 10개).")
     
     try:
-        all_markets = await upbit_service.exchange.fetch_markets()
-        if not all_markets:
-            print("[WARN] Upbit에서 티커 정보를 가져오지 못했습니다. 고정 유니버스를 반환합니다.")
-            return [
-                "BTC/KRW", "ETH/KRW", "XRP/KRW", "SOL/KRW", "DOGE/KRW",
-                "AVAX/KRW", "ADA/KRW", "LINK/KRW", "ETC/KRW", "TRX/KRW"
-            ]
-
-        volume_data = []
-        for market in all_markets:
-            symbol = market['symbol']
-            if market['quote'] == 'KRW': # KRW 마켓만 고려
-                try:
-                    ticker_detail = await upbit_service.exchange.fetch_ticker(symbol)
-                    if ticker_detail and 'quoteVolume' in ticker_detail:
-                        volume_data.append({'symbol': symbol, 'volume': ticker_detail['quoteVolume']})
-                except Exception:
-                    # fetch_ticker에서 오류가 발생하는 일부 마켓(예: BCH-BTC)은 건너뜁니다.
-                    continue
+        import requests
+        res = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
+        krw_markets = [m['market'] for m in res if m['market'].startswith('KRW-')]
         
-        # 거래량 기준으로 내림차순 정렬
+        volume_data = []
+        for i in range(0, len(krw_markets), 100):
+            batch = ','.join(krw_markets[i:i+100])
+            tickers = requests.get(f'https://api.upbit.com/v1/ticker?markets={batch}', timeout=5).json()
+            for t in tickers:
+                volume_data.append({
+                    'symbol': t['market'].replace('KRW-', '') + '/KRW',
+                    'volume': float(t.get('acc_trade_price_24h', 0))
+                })
+
         volume_df = pd.DataFrame(volume_data)
         if volume_df.empty:
             print("[WARN] 거래량 데이터를 가져오지 못했습니다. 고정 유니버스를 반환합니다.")
@@ -38,8 +31,7 @@ async def get_top_10_coins(upbit_service: UpbitService):
             ]
 
         top_10_coins = volume_df.nlargest(10, 'volume')['symbol'].tolist()
-        
-        print(f"[SUCCESS] 동적 선정 유니버스 (상위 10개): {top_10_coins}")
+        print(f"[SUCCESS] 동적 선정 유니버스 (상위 10개, 초고속 배치 완료): {top_10_coins}")
         return top_10_coins
 
     except Exception as e:

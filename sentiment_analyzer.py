@@ -78,6 +78,13 @@ class SentimentAnalyzer:
             print(f"  - [Sentiment] Gemini API 호출 중 오류: {e}")
             return 50, "API 호출 실패"
 
+    def get_sentiment_score(self, ticker: str) -> tuple[float, str]:
+        """
+        0-100 사이의 공포-탐욕 지수를 0.0-1.0 범위의 정규화된 점수로 반환합니다.
+        """
+        score, narrative = self.get_fear_greed_index(ticker)
+        return float(score) / 100.0, narrative
+
 
 if __name__ == "__main__":
     try:
