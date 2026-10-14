@@ -1,7 +1,11 @@
 import os
 import re
-import google.generativeai as genai
 from dotenv import load_dotenv
+
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 
 class SentimentAnalyzer:
@@ -13,12 +17,18 @@ class SentimentAnalyzer:
     def __init__(self):
         load_dotenv()
         api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY 환경 변수를 설정해주세요.")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("models/gemini-pro-latest")
+        if not api_key or genai is None:
+            self.model = None
+            return
+        try:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("models/gemini-pro-latest")
+        except Exception:
+            self.model = None
 
     def get_fear_greed_index(self, ticker: str) -> tuple[int, str]:
+        if self.model is None:
+            return 50, "중립 기본값 (API 미연동)"
         """
         주어진 티커에 대한 시장의 공포-탐욕 지수를 0-100 사이의 점수로 반환합니다.
 
