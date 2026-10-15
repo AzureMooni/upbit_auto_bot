@@ -229,10 +229,18 @@ class LiveTrader:
                         if investment_fraction > 0:
                             cash_balance = await self.upbit_service.get_balance('KRW') or 0
                             buy_amount_krw = cash_balance * investment_fraction
-                            if buy_amount_krw > 5000:
+
+                            # [소액 계좌 스마트 로트 최적화]
+                            # 업비트 최소 주문 금액(5,000 KRW) 미만일 때, 잔고가 허용하면 5,500 KRW로 자동 승격
+                            if buy_amount_krw < 5500 and cash_balance >= 5500:
+                                buy_amount_krw = 5500
+                            elif buy_amount_krw > cash_balance:
+                                buy_amount_krw = cash_balance
+
+                            if buy_amount_krw >= 5000:
                                 await self.execution_engine.create_market_buy_order(symbol, buy_amount_krw) # symbol is already in BASE/QUOTE format
                             else:
-                                print('  - [EXEC] 주문 금액이 최소 기준(5,000 KRW) 미만입니다.')
+                                print(f'  - [EXEC] 주문 금액({buy_amount_krw:.0f} KRW)이 최소 기준(5,000 KRW) 미만입니다. (보유 잔고: {cash_balance:.0f} KRW)')
 
                     elif predicted_action == 'Sell':
                         coin_ticker = symbol.split('/')[0] # BTC/KRW -> BTC
