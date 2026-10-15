@@ -2,9 +2,8 @@ name: Autonomous Cloud Quant Trader
 
 on:
   workflow_dispatch:
-  schedule:
-    # 20분 주기로 24시간 실시간 무중단 자동 매매 실행 (노트북 전원 무관)
-    - cron: '*/20 * * * *'
+# schedule:
+  #   - cron: '*/20 * * * *'
 
 jobs:
   cloud-quant:
