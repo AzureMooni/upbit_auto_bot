@@ -43,17 +43,37 @@ def precompute_all_indicators(df: pd.DataFrame):
         df['NATR_14'] = (df['ATRr_14'] / df['close']) * 100
     elif 'ATR_14' in df.columns:
         df['NATR_14'] = (df['ATR_14'] / df['close']) * 100
+    else:
+        atr_cols = [c for c in df.columns if 'ATR' in c]
+        if atr_cols:
+            df['NATR_14'] = (df[atr_cols[0]] / df['close']) * 100
+        else:
+            df['NATR_14'] = 1.0
 
     # MACD histogram alias compatibility
     if 'MACDH_12_26_9' in df.columns and 'MACDh_12_26_9' not in df.columns:
         df['MACDh_12_26_9'] = df['MACDH_12_26_9']
     elif 'MACDh_12_26_9' in df.columns and 'MACDH_12_26_9' not in df.columns:
         df['MACDH_12_26_9'] = df['MACDh_12_26_9']
+    elif 'MACDh_12_26_9' not in df.columns:
+        macdh_cols = [c for c in df.columns if 'MACD' in c and ('H' in c or 'h' in c)]
+        if macdh_cols:
+            df['MACDh_12_26_9'] = df[macdh_cols[0]]
+        else:
+            df['MACDh_12_26_9'] = 0.0
 
     # Bollinger Bands Percent alias compatibility
-    if 'BBL_20' in df.columns and 'BBU_20' in df.columns and 'BBP_20_2.0' not in df.columns:
-        denom = df['BBU_20'] - df['BBL_20']
-        df['BBP_20_2.0'] = np.where(denom != 0, (df['close'] - df['BBL_20']) / denom, 0.5)
+    bbp_cols = [c for c in df.columns if c.startswith('BBP_')]
+    if bbp_cols:
+        df['BBP_20_2.0'] = df[bbp_cols[0]]
+    else:
+        bbl_cols = [c for c in df.columns if c.startswith('BBL_')]
+        bbu_cols = [c for c in df.columns if c.startswith('BBU_')]
+        if bbl_cols and bbu_cols:
+            denom = df[bbu_cols[0]] - df[bbl_cols[0]]
+            df['BBP_20_2.0'] = np.where(denom != 0, (df['close'] - df[bbl_cols[0]]) / denom, 0.5)
+        else:
+            df['BBP_20_2.0'] = 0.5
 
     # SMA using pandas built-in
     df['SMA_50'] = df['close'].rolling(window=50).mean()
